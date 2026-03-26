@@ -3,70 +3,37 @@ set -euo pipefail
 
 log() { echo -e "\n[$(date +%H:%M:%S)] $*"; }
 
-CONFIG_FILE="./config/k0s.yaml"
-
-if [ ! -f "$CONFIG_FILE" ]; then
-  echo "ERROR: $CONFIG_FILE not found"
+# --- ensure API reachable ---
+log "Checking API availability"
+if ! sudo k0s kubectl get --raw=/healthz >/dev/null 2>&1; then
+  echo "ERROR: API server not reachable. Run 02-cluster.sh first."
   exit 1
 fi
 
-# --- stop previous cluster ---
-log "Stopping k0s (if running)"
-sudo k0s stop 2>/dev/null || true
+# --- apply Calico ---
+log "Installing Calico"
+sudo k0s kubectl apply -f ./config/calico.yaml
 
-# --- remove systemd service ---
-log "Removing old k0s service"
-sudo systemctl disable k0scontroller 2>/dev/null || true
-sudo rm -f /etc/systemd/system/k0scontroller.service
-sudo systemctl daemon-reexec
-sudo systemctl daemon-reload
-
-# --- kill leftovers ---
-log "Killing leftover processes"
-sudo pkill -f kubelet 2>/dev/null || true
-sudo pkill -f containerd-shim 2>/dev/null || true
-
-# --- unmount kubelet leftovers ---
-log "Unmounting leftovers"
-mount | grep -E '/var/lib/k0s|/var/lib/kubelet' 2>/dev/null | \
-awk '{print $3}' | sort -r | while read -r m; do
-  sudo umount -l "$m" 2>/dev/null || true
-done || true
-
-# --- wipe cluster state ---
-log "Removing cluster state"
-sudo rm -rf /var/lib/k0s
-sudo rm -rf /var/lib/kubelet
-sudo rm -rf /etc/k0s
-
-# --- install controller ---
-log "Installing k0s controller"
-sudo k0s install controller --single --config "$CONFIG_FILE"
-
-# --- start ---
-log "Starting k0s"
-sudo k0s start
-
-# --- wait for API ---
-log "Waiting for API server"
+# --- wait for CRDs ---
+log "Waiting for Calico CRDs"
 for i in {1..60}; do
-  if sudo k0s kubectl get --raw=/healthz >/dev/null 2>&1; then
-    log "API is up"
+  if sudo k0s kubectl get crd ippools.crd.projectcalico.org >/dev/null 2>&1; then
+    log "Calico CRDs available"
     break
   fi
   sleep 2
 done
 
-# --- wait for node ---
-log "Waiting for node registration"
-for i in {1..60}; do
-  if sudo k0s kubectl get nodes 2>/dev/null | grep -q "Ready"; then
-    log "Node is Ready"
-    sudo k0s kubectl get nodes -o wide
-    exit 0
-  fi
-  sleep 2
-done
+# --- apply IP pool ---
+log "Applying Calico IP pool"
+sudo k0s kubectl apply -f ./config/calico-ippool.yaml
 
-echo "ERROR: Node did not register"
-exit 1
+# --- apply IPAM config ---
+log "Applying Calico IPAM config"
+sudo k0s kubectl apply -f ./config/calico-ipam.yaml
+
+# --- sanity check (NO node requirement) ---
+log "Checking Calico control-plane components"
+sudo k0s kubectl get pods -n kube-system || true
+
+log "Network installation complete"
