@@ -28,8 +28,15 @@ init_script() {
     echo "Script: ${SCRIPT_NAME}"
     echo "Started: $(date -Iseconds)"
     echo "Log: ${LOG_FILE}"
+    echo "Command tracing: enabled"
     echo "============================================================"
   } >>"${LOG_FILE}"
+
+  # Always-on verbose tracing to the log file only.
+  # stderr is already redirected to LOG_FILE, so trace lines stay out of operator console (fd 3).
+  export BASH_XTRACEFD=2
+  export PS4='+ [$(date +%H:%M:%S)] [${SCRIPT_NAME}:${LINENO}] '
+  set -x
 
   export SCRIPT_NAME SCRIPT_BASENAME SCRIPT_DIR LOG_DIR LOG_FILE SCRIPT_START_EPOCH
 }

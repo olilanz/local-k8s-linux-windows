@@ -77,8 +77,9 @@ config/
 01-prereqs.sh
 02-cluster.sh
 03-network.sh
-04-linux-node.sh
-05-windows-node.ps1
+04-controller-token.sh
+05-linux-node.sh
+06-windows-node.ps1
 10-nginx.sh
 20-validate.sh
 99-cleanup.sh
@@ -89,8 +90,9 @@ config/
 - [`01-prereqs.sh`](01-prereqs.sh): install/ensure base dependencies (containerd, CNI plugins, k0s, image pre-pull)
 - [`02-cluster.sh`](02-cluster.sh): install and start control plane only
 - [`03-network.sh`](03-network.sh): apply Calico and related IPPool/IPAM config
-- [`04-linux-node.sh`](04-linux-node.sh): join Linux worker and validate readiness path
-- [`05-windows-node.ps1`](05-windows-node.ps1): Windows worker stage placeholder (currently empty)
+- [`04-controller-token.sh`](04-controller-token.sh): generate shared worker join token artifact (`./artifacts/k0s-worker-token`) for Linux/Windows worker stages, then auto-join local Linux worker by default
+- [`05-linux-node.sh`](05-linux-node.sh): Linux worker join/install script (default token path `./artifacts/k0s-worker-token`); supports same-VM dual-service mode when explicitly allowed by caller
+- [`06-windows-node.ps1`](06-windows-node.ps1): Windows worker stage scaffold that consumes the same shared token artifact path
 - [`10-nginx.sh`](10-nginx.sh): basic smoke deployment/connectivity check
 - [`20-validate.sh`](20-validate.sh): broad state diagnostics snapshot
 - [`99-cleanup.sh`](99-cleanup.sh): destructive cleanup/reset of local cluster state
@@ -106,12 +108,28 @@ sudo reboot
 ./01-prereqs.sh
 ./02-cluster.sh
 ./03-network.sh
-./04-linux-node.sh
+./04-controller-token.sh
+# optional: run manually only when AUTO_JOIN_LOCAL_WORKER=false
+# ./05-linux-node.sh
+# optional/parallel worker path scaffold
+# ./06-windows-node.ps1
 ./10-nginx.sh
 ./20-validate.sh
 ```
 
-Windows worker onboarding should be inserted when [`05-windows-node.ps1`](05-windows-node.ps1) is implemented.
+By default, [`04-controller-token.sh`](04-controller-token.sh) performs local same-VM Linux worker join and passes `ALLOW_SAME_HOST_WORKER=true` into [`05-linux-node.sh`](05-linux-node.sh).
+
+If you want separate-host worker onboarding, opt out with `AUTO_JOIN_LOCAL_WORKER=false`:
+
+```bash
+AUTO_JOIN_LOCAL_WORKER=false ./04-controller-token.sh
+```
+
+Then transfer `./artifacts/k0s-worker-token` and run [`05-linux-node.sh`](05-linux-node.sh) on the separate Linux worker host.
+
+For Windows worker onboarding, place the same token at the expected path and run [`06-windows-node.ps1`](06-windows-node.ps1).
+
+Windows worker onboarding is currently a scaffold and should be expanded before production use.
 
 ### Environment Hygiene During Iterative Testing
 
@@ -151,7 +169,7 @@ Cluster/runtime state under paths such as `/var/lib/k0s`, `/var/lib/kubelet`, `/
 ### Current Implementation Status
 
 - Linux control-plane and Linux worker path are implemented in shell scripts.
-- Windows worker automation script exists as [`05-windows-node.ps1`](05-windows-node.ps1) but is currently empty.
+- Windows worker automation scaffold exists as [`06-windows-node.ps1`](06-windows-node.ps1) and currently validates shared token input only.
 
 ---
 

@@ -19,13 +19,35 @@ ARCH=amd64
 CNI_VERSION="v1.5.1"
 K0S_VERSION="v1.35.2+k0s.0"
 
+SUDO_BIN=""
+if [[ "${EUID}" -eq 0 ]]; then
+  log "Running as root"
+elif command -v sudo >/dev/null 2>&1; then
+  if sudo -n true >/dev/null 2>&1; then
+    SUDO_BIN="sudo"
+    log "Using non-interactive sudo"
+  else
+    fail "This script needs privileged operations. Run with root privileges or enable non-interactive sudo for this session."
+  fi
+else
+  fail "sudo is required when not running as root"
+fi
+
+as_root() {
+  if [[ -n "${SUDO_BIN}" ]]; then
+    "${SUDO_BIN}" "$@"
+  else
+    "$@"
+  fi
+}
+
 # --- containerd ---
 log "Ensuring containerd"
 if ! systemctl is-active --quiet containerd; then
-  sudo apt-get update -y
-  sudo apt-get install -y containerd
-  sudo systemctl enable containerd
-  sudo systemctl start containerd
+  as_root apt-get update -y
+  as_root apt-get install -y containerd
+  as_root systemctl enable containerd
+  as_root systemctl start containerd
 else
   log "containerd already running"
 fi
@@ -42,8 +64,8 @@ done
 
 # --- CNI dirs ---
 log "Ensuring CNI directories"
-sudo mkdir -p /opt/cni/bin
-sudo mkdir -p /etc/cni/net.d
+as_root mkdir -p /opt/cni/bin
+as_root mkdir -p /etc/cni/net.d
 
 # --- CNI plugins ---
 if [ ! -f /opt/cni/bin/bridge ]; then
@@ -51,19 +73,19 @@ if [ ! -f /opt/cni/bin/bridge ]; then
   TMP_DIR=$(mktemp -d)
   curl -L -o "$TMP_DIR/cni.tgz" \
     "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz"
-  sudo tar -C /opt/cni/bin -xzf "$TMP_DIR/cni.tgz"
+  as_root tar -C /opt/cni/bin -xzf "$TMP_DIR/cni.tgz"
   rm -rf "$TMP_DIR"
 else
   log "CNI plugins already present"
 fi
 
 # --- ensure executable ---
-sudo chmod +x /opt/cni/bin/*
+as_root chmod +x /opt/cni/bin/*
 
 # --- k0s binary ---
 if ! command -v k0s >/dev/null 2>&1; then
   log "Installing k0s"
-  curl -sSLf https://get.k0s.sh | sudo sh
+  curl -sSLf https://get.k0s.sh | as_root sh
 else
   log "k0s already installed"
 fi
@@ -71,15 +93,15 @@ fi
 # --- pre-pull required images ---
 log "Pre-pulling required images"
 
-IMAGES=(
-  "quay.io/calico/cni:v3.31.4"
-  "quay.io/calico/node:v3.31.4"
-  "quay.io/calico/kube-controllers:v3.31.4"
-)
+mapfile -t IMAGES < <(k0s airgap list-images | sed '/^\s*$/d' | sort -u)
+
+if [[ "${#IMAGES[@]}" -eq 0 ]]; then
+  fail "No images returned by 'k0s airgap list-images'"
+fi
 
 for IMAGE in "${IMAGES[@]}"; do
   log "Pulling $IMAGE"
-  sudo ctr -n k8s.io images pull "$IMAGE"
+  as_root ctr -n k8s.io images pull "$IMAGE"
 done
 
 summary "./02-cluster.sh"

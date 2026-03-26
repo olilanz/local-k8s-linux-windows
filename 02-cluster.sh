@@ -16,7 +16,31 @@ init_script "${BASH_SOURCE[0]}"
 register_error_trap
 
 K0S_CONFIG_PATH="/etc/k0s/k0s.yaml"
-KUBECTL="sudo k0s kubectl"
+SUDO_BIN=""
+if [[ "${EUID}" -eq 0 ]]; then
+  log "Running as root"
+elif command -v sudo >/dev/null 2>&1; then
+  if sudo -n true >/dev/null 2>&1; then
+    SUDO_BIN="sudo"
+    log "Using non-interactive sudo"
+  else
+    fail "This script needs privileged operations. Run with root privileges or enable non-interactive sudo for this session."
+  fi
+else
+  fail "sudo is required when not running as root"
+fi
+
+as_root() {
+  if [[ -n "${SUDO_BIN}" ]]; then
+    "${SUDO_BIN}" "$@"
+  else
+    "$@"
+  fi
+}
+
+k0s_kubectl() {
+  as_root k0s kubectl "$@"
+}
 
 # ------------------------------------------------------------------------------
 # Pre-flight
@@ -24,21 +48,24 @@ KUBECTL="sudo k0s kubectl"
 
 log "Ensuring clean state (controller only)"
 
-sudo systemctl stop k0sworker 2>/dev/null || true
-sudo systemctl stop k0scontroller 2>/dev/null || true
+as_root systemctl stop k0sworker 2>/dev/null || true
+as_root systemctl stop k0scontroller 2>/dev/null || true
 
 # Clean stale runtime artifacts (non-destructive)
-sudo rm -f /run/k0s/status.sock 2>/dev/null || true
+as_root rm -f /run/k0s/status.sock 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
 # Install controller (NO worker)
 # ------------------------------------------------------------------------------
 
 log "Installing k0s controller (control-plane only)"
-
-sudo k0s install controller \
-  --config "${K0S_CONFIG_PATH}" \
-  --enable-worker=false
+if as_root systemctl cat k0scontroller >/dev/null 2>&1; then
+  log "k0scontroller service already installed; skipping install"
+else
+  as_root k0s install controller \
+    --config "${K0S_CONFIG_PATH}" \
+    --enable-worker=false
+fi
 
 # ------------------------------------------------------------------------------
 # Start controller
@@ -46,10 +73,10 @@ sudo k0s install controller \
 
 log "Starting k0s controller"
 
-sudo systemctl daemon-reexec
-sudo systemctl daemon-reload
-sudo systemctl enable k0scontroller
-sudo systemctl start k0scontroller
+as_root systemctl daemon-reexec
+as_root systemctl daemon-reload
+as_root systemctl enable k0scontroller
+as_root systemctl start k0scontroller
 
 # ------------------------------------------------------------------------------
 # Wait for API to come up
@@ -58,12 +85,20 @@ sudo systemctl start k0scontroller
 log "Waiting for Kubernetes API"
 
 # Wait for port first
-until sudo ss -tulnp | grep -q ":6443"; do
+port_deadline=$((SECONDS + 180))
+until as_root ss -tulnp | grep -q ":6443"; do
+  if (( SECONDS >= port_deadline )); then
+    fail "Timed out waiting for API server port 6443"
+  fi
   sleep 2
 done
 
 # Wait for API health
+health_deadline=$((SECONDS + 180))
 until curl -k https://127.0.0.1:6443/healthz >/dev/null 2>&1; do
+  if (( SECONDS >= health_deadline )); then
+    fail "Timed out waiting for API health endpoint"
+  fi
   sleep 2
 done
 
@@ -75,11 +110,17 @@ log "API is responding"
 
 log "Setting up kubeconfig"
 
-mkdir -p "$HOME/.kube"
-sudo cp /var/lib/k0s/pki/admin.conf "$HOME/.kube/config"
-sudo chown "$(id -u)":"$(id -g)" "$HOME/.kube/config"
+TARGET_USER="${SUDO_USER:-$(id -un)}"
+TARGET_HOME="${HOME}"
+if [[ -n "${SUDO_USER:-}" ]]; then
+  TARGET_HOME="$(getent passwd "${SUDO_USER}" | cut -d: -f6)"
+fi
 
-export KUBECONFIG="$HOME/.kube/config"
+mkdir -p "${TARGET_HOME}/.kube"
+as_root cp /var/lib/k0s/pki/admin.conf "${TARGET_HOME}/.kube/config"
+as_root chown "$(id -u "${TARGET_USER}")":"$(id -g "${TARGET_USER}")" "${TARGET_HOME}/.kube/config"
+
+export KUBECONFIG="${TARGET_HOME}/.kube/config"
 
 # ------------------------------------------------------------------------------
 # Verify control-plane-only state
@@ -87,7 +128,7 @@ export KUBECONFIG="$HOME/.kube/config"
 
 log "Verifying control plane only (no worker expected)"
 
-$KUBECTL get nodes || true
+k0s_kubectl get nodes || true
 
 # ------------------------------------------------------------------------------
 # Inspect system pods (some may be Pending until worker joins)
@@ -95,7 +136,7 @@ $KUBECTL get nodes || true
 
 log "Inspecting kube-system pods"
 
-$KUBECTL get pods -n kube-system -o wide
+k0s_kubectl get pods -n kube-system -o wide
 
 # ------------------------------------------------------------------------------
 # Done
