@@ -14,10 +14,12 @@ fi
 log "Stopping k0s (if running)"
 sudo k0s stop 2>/dev/null || true
 
-# --- remove systemd service ---
-log "Removing old k0s service"
+# --- remove systemd services ---
+log "Removing old k0s services"
 sudo systemctl disable k0scontroller 2>/dev/null || true
+sudo systemctl disable k0sworker 2>/dev/null || true
 sudo rm -f /etc/systemd/system/k0scontroller.service
+sudo rm -f /etc/systemd/system/k0sworker.service
 sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
 
@@ -26,25 +28,31 @@ log "Killing leftover processes"
 sudo pkill -f kubelet 2>/dev/null || true
 sudo pkill -f containerd-shim 2>/dev/null || true
 
-# --- unmount kubelet leftovers ---
+# --- unmount leftovers ---
 log "Unmounting leftovers"
 mount | grep -E '/var/lib/k0s|/var/lib/kubelet' 2>/dev/null | \
 awk '{print $3}' | sort -r | while read -r m; do
   sudo umount -l "$m" 2>/dev/null || true
 done || true
 
-# --- wipe cluster state ---
+# --- wipe state ---
 log "Removing cluster state"
 sudo rm -rf /var/lib/k0s
 sudo rm -rf /var/lib/kubelet
 sudo rm -rf /etc/k0s
 
+# --- ensure containerd ---
+log "Ensuring containerd is running"
+if ! systemctl is-active --quiet containerd; then
+  sudo systemctl start containerd
+fi
+
 # --- install controller ---
 log "Installing k0s controller"
-sudo k0s install controller --single --config "$CONFIG_FILE"
+sudo k0s install controller --config "$CONFIG_FILE"
 
-# --- start ---
-log "Starting k0s"
+# --- start controller ---
+log "Starting k0s controller"
 sudo k0s start
 
 # --- wait for API ---
@@ -52,21 +60,10 @@ log "Waiting for API server"
 for i in {1..60}; do
   if sudo k0s kubectl get --raw=/healthz >/dev/null 2>&1; then
     log "API is up"
-    break
-  fi
-  sleep 2
-done
-
-# --- wait for node ---
-log "Waiting for node registration"
-for i in {1..60}; do
-  if sudo k0s kubectl get nodes 2>/dev/null | grep -q "Ready"; then
-    log "Node is Ready"
-    sudo k0s kubectl get nodes -o wide
     exit 0
   fi
   sleep 2
 done
 
-echo "ERROR: Node did not register"
+echo "ERROR: API server did not become ready"
 exit 1
