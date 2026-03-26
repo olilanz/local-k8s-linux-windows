@@ -82,6 +82,31 @@ Each stage script should begin with a concise header containing:
 - If a stage reveals drift or invariant violation, resolve before proceeding.
 - Any discovered conflict with README guidance must be surfaced and reconciled in README first.
 
+## Environment Hygiene and Rebuild Policy
+
+- Iterative script testing can contaminate local cluster state.
+- Treat unexpected behavior as potential environment contamination before assuming script logic failure.
+- When contamination is suspected, run `99-cleanup.sh` and then reboot before rebuilding.
+- A cleanup-plus-reboot cycle is expected periodically during development, especially after Kubernetes network configuration changes.
+
+## Script Execution Order Policy
+
+- After reboot, rebuild sequentially in numeric script-name order.
+- Execute one stage at a time and validate stage outcomes before continuing.
+- Do not skip ordering guarantees during recovery or test rebuilds.
+
+## Iterative Testing Contract
+
+- Scripts may be executed repeatedly during development and troubleshooting.
+- Stage scripts must remain idempotent at their declared stage boundary.
+- Incremental script improvement is expected, but reruns must stay safe and deterministic.
+
+## Logging Strategy for Stage Scripts
+
+- Prefer per-run log files using `logs/<script-name>-<timestamp>.log`.
+- Keep console output high-signal by mirroring key progress lines only.
+- Preserve detailed command and diagnostic output in the log files for post-run analysis.
+
 ## Development Surface Notes
 
 - Linux-oriented development may later run in WSL.

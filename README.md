@@ -1,144 +1,71 @@
 # Local Kubernetes (Linux + Windows) with k0s + Calico
 
-This repository provides a **deterministic, script-driven setup** for running a local Kubernetes cluster using:
+## Purpose and Scope
 
-* **k0s** (single-node control plane)
-* **containerd**
-* **Calico (VXLAN + strictAffinity)** for Windows compatibility
-* **Windows worker node support**
+This repository provides a deterministic, script-driven setup for a local Kubernetes environment with:
 
-The setup is designed for **repeatability, clarity, and controlled experimentation**, not for production.
+- [k0s](https://k0sproject.io/) control plane
+- [containerd](https://containerd.io/) runtime
+- [Calico](https://projectcalico.docs.tigera.io/) networking configured for mixed-OS compatibility
+- Linux node participation now, Windows worker flow planned
 
----
+Primary intent:
 
-# Architecture Overview
+- provide a local development cluster with AKS-hybrid-like capabilities
+- handle hybrid Linux/Windows cluster complexity through a repeatable workflow
+- reduce cluster bring-up complexity as a developer productivity hurdle
 
-```text
-Linux VM (Ubuntu 24.04)
-  └── k0s (single-node control plane)
-      └── containerd
-      └── Calico (VXLAN overlay)
-
-Windows host
-  └── containerd + kubelet
-      └── joins cluster as worker
-```
-
-Key design goals:
-
-* Match production-like behavior (AKS-style cluster)
-* Support **mixed OS workloads (Linux + Windows)**
-* Enable **local development with real networking semantics**
-* Ensure **full rebuild capability without hidden state**
+This project is not intended for production deployment.
 
 ---
 
-# Key Decisions & Learnings
+## High Target Architecture
 
-## 1. Networking must be correct from the start
+The architecture is documented at a high level for operator understanding.
 
-You **cannot safely change the CNI/network model after cluster creation**.
+```mermaid
+flowchart TD
+  H[Host OS] --> L[Linux VM]
+  H --> W[Windows host or VM]
 
-Changing:
+  L --> CP[k0s control plane]
+  CP --> CTR1[containerd]
+  CP --> CNI[Calico VXLAN + strictAffinity]
 
-* IPIP → VXLAN
-* IPAM behavior
-* overlay mode
+  L --> LW[Linux worker join path]
+  W --> WW[Windows worker join path]
 
-requires:
-
-```text
-→ full cluster rebuild
+  CP --> API[Kubernetes API]
+  LW --> API
+  WW --> API
 ```
 
-This is why networking is handled as a **separate, explicit step**.
+Conceptual boundaries to keep in mind:
+
+- host OS layer and guest VM layer
+- internal virtual switching path between nodes
+- per-node containerd runtime instances
+- control-plane first, then node join sequence
 
 ---
 
-## 2. Calico version matters (Ubuntu 24.04)
+## Why This Architecture Looks This Way
 
-Ubuntu 24.04 requires a **newer Calico version**.
+Some design choices are intentional guardrails to keep the hybrid cluster stable and developer-friendly:
 
-Older manifests will:
+- **Control plane is not hosted in WSL2**: WSL2 networking can reset in ways that destabilize long-running Kubernetes control-plane behavior.
+- **Linux and Windows workloads use isolated runtime environments**: Linux and Windows containers do not share one containerd runtime instance; isolation through Hyper-V boundaries avoids cross-OS runtime conflicts.
+- **Dedicated Linux VM for cluster core**: control plane and cluster workloads are separated from day-to-day developer tooling/config drift on the Linux development side.
+- **WSL2 remains fully available for Linux development**: developers can customize WSL2 freely without coupling changes to cluster control-plane stability.
+- **Windows host remains fully available for Windows development**: local developer workflows on Windows are kept independent from cluster lifecycle concerns.
 
-* fail silently
-* hang during CRD or pod startup
-* never produce a usable IPPool
-
-This repo uses a **validated Calico manifest** compatible with:
-
-```text
-Kernel: 6.8.x
-OS: Ubuntu 24.04
-```
+Implementation notes such as whether runtime sharing is viable in specific future scenarios are treated as evolving details and tracked in scripts or implementation notes, not as hard README guarantees.
 
 ---
 
-## 3. Windows compatibility requirements
+## Script Structure and Usage
 
-To support Windows nodes, Calico must be configured with:
-
-```text
-ipipMode: Never
-vxlanMode: Always
-strictAffinity: true
-```
-
-Without this:
-
-```text
-→ Windows nodes fail to join or behave unpredictably
-```
-
----
-
-## 4. Determinism over convenience
-
-All scripts are designed to be:
-
-```text
-✔ re-entrant
-✔ explicit
-✔ state-resetting when required
-```
-
-No hidden assumptions.
-
----
-
-## 5. Cluster state lives in `/var/lib/k0s`
-
-This is critical:
-
-```text
-/var/lib/k0s = the cluster
-```
-
-If not removed:
-
-```text
-→ previous state leaks
-→ kubelet may not start
-→ node may not register
-```
-
----
-
-## 6. Script separation (important)
-
-Instead of one large script, the system is split into **independent stages**.
-
-This avoids:
-
-```text
-❌ debugging everything at once
-❌ hidden failures
-❌ state drift
-```
-
----
-
-# Repository Structure
+### Repository Structure
 
 ```text
 config/
@@ -147,100 +74,30 @@ config/
   calico-ippool.yaml
   calico-ipam.yaml
 
-scripts:
-  01-prereqs.sh
-  02-cluster.sh
-  03-network-calico.sh
-  04-smoke-nginx.sh
-  05-diagnostics.sh
-  99-cleanup.sh
+01-prereqs.sh
+02-cluster.sh
+03-network.sh
+04-linux-node.sh
+05-windows-node.ps1
+10-nginx.sh
+20-validate.sh
+99-cleanup.sh
 ```
 
----
+### Stage Responsibilities
 
-# Script Responsibilities
+- [`01-prereqs.sh`](01-prereqs.sh): install/ensure base dependencies (containerd, CNI plugins, k0s, image pre-pull)
+- [`02-cluster.sh`](02-cluster.sh): install and start control plane only
+- [`03-network.sh`](03-network.sh): apply Calico and related IPPool/IPAM config
+- [`04-linux-node.sh`](04-linux-node.sh): join Linux worker and validate readiness path
+- [`05-windows-node.ps1`](05-windows-node.ps1): Windows worker stage placeholder (currently empty)
+- [`10-nginx.sh`](10-nginx.sh): basic smoke deployment/connectivity check
+- [`20-validate.sh`](20-validate.sh): broad state diagnostics snapshot
+- [`99-cleanup.sh`](99-cleanup.sh): destructive cleanup/reset of local cluster state
 
-## `01-prereqs.sh`
+### Standard Rebuild Workflow
 
-Prepares the host:
-
-* installs containerd
-* installs CNI plugins
-* installs k0s
-
-Does **not** touch cluster state.
-
----
-
-## `02-cluster.sh`
-
-Creates a **clean k0s cluster**:
-
-* wipes previous cluster state
-* installs k0s controller (`--single`)
-* starts cluster
-* waits for node registration
-
----
-
-## `03-network-calico.sh`
-
-Installs networking:
-
-* applies Calico manifest
-* applies IPPool (VXLAN)
-* applies IPAM (strictAffinity)
-* waits for readiness
-
----
-
-## `04-smoke-nginx.sh`
-
-Validates cluster functionality:
-
-* deploys nginx
-* exposes service
-* verifies in-cluster connectivity
-
----
-
-## `05-diagnostics.sh`
-
-Debug tool:
-
-* nodes
-* pods
-* services
-* Calico state
-* kubelet process
-* container runtime
-* API health
-
-Use this at any time.
-
----
-
-## `99-cleanup.sh`
-
-Fully destructive reset:
-
-* stops k0s
-* removes cluster state
-* clears CNI + networking
-* resets iptables
-* restarts containerd
-
-Guarantees:
-
-```text
-→ clean slate
-```
-
----
-
-# Usage Workflow
-
-## Clean rebuild (recommended)
+Run stages sequentially by numeric filename order.
 
 ```bash
 ./99-cleanup.sh
@@ -248,109 +105,56 @@ sudo reboot
 
 ./01-prereqs.sh
 ./02-cluster.sh
-./03-network-calico.sh
-./04-smoke-nginx.sh
+./03-network.sh
+./04-linux-node.sh
+./10-nginx.sh
+./20-validate.sh
 ```
+
+Windows worker onboarding should be inserted when [`05-windows-node.ps1`](05-windows-node.ps1) is implemented.
+
+### Environment Hygiene During Iterative Testing
+
+During script development and repeated test runs, environment contamination can occur.
+
+- treat unexpected behavior as possible state contamination
+- if contamination is suspected, run [`99-cleanup.sh`](99-cleanup.sh) then reboot
+- after reboot, rebuild sequentially in numeric order
+- this cycle is expected, especially after Kubernetes networking changes
+
+### Logging Recommendation
+
+To keep console output clean while preserving diagnostics:
+
+- write full per-run logs to `logs/<script-name>-<timestamp>.log`
+- print only high-signal progress lines to console
+- keep detailed command output in log files for post-run analysis
 
 ---
 
-## Diagnostics
+## Technical Details and Considerations
 
-```bash
-./05-diagnostics.sh
-```
+Only the details that directly affect operator decisions are captured here. Deeper implementation specifics belong in script headers.
 
----
+### Networking Is a Rebuild Boundary
 
-# Expected State
+Network model changes are treated as rebuild-triggering operations. In practice, changing Calico mode/IPAM behavior should assume cleanup + reboot + sequential rebuild.
 
-After successful setup:
+### Determinism and Idempotency
 
-```text
-Nodes:
-  Linux control-plane → Ready
-  Windows worker     → Ready (after join)
+Scripts are designed to be re-runnable at their stage boundary so you can iteratively improve and test. Idempotency is a core requirement for this workflow.
 
-Calico:
-  calico-node        → Running
-  VXLAN              → Active
+### State Location Awareness
 
-Workloads:
-  nginx              → reachable via cluster IP
-```
+Cluster/runtime state under paths such as `/var/lib/k0s`, `/var/lib/kubelet`, `/var/lib/cni`, and runtime mounts/processes can leak across failed runs; this is why [`99-cleanup.sh`](99-cleanup.sh) is part of normal operator workflow.
+
+### Current Implementation Status
+
+- Linux control-plane and Linux worker path are implemented in shell scripts.
+- Windows worker automation script exists as [`05-windows-node.ps1`](05-windows-node.ps1) but is currently empty.
 
 ---
 
-# Troubleshooting Principles
+## Scope Reminder
 
-## If cluster fails (`02-cluster.sh`)
-
-Check:
-
-```bash
-ps aux | grep kubelet
-```
-
-If missing:
-
-```text
-→ cluster state was not clean
-```
-
----
-
-## If Calico fails (`03-network-calico.sh`)
-
-Check:
-
-```bash
-kubectl get crd | grep ippool
-kubectl get pods -n kube-system
-```
-
-Common cause:
-
-```text
-→ incompatible Calico version
-```
-
----
-
-## If pods don’t start
-
-Check:
-
-```bash
-./05-diagnostics.sh
-```
-
-Focus on:
-
-* containerd
-* CNI directories
-* node readiness
-
----
-
-# Scope & Intent
-
-This setup is intended for:
-
-* local Kubernetes experimentation
-* hybrid Linux/Windows validation
-* architecture prototyping
-
-It is **not** intended for production use.
-
----
-
-# Final Note
-
-The most important invariant in this setup:
-
-```text
-Correct networking must be defined before cluster creation.
-```
-
-Everything else is recoverable.
-Networking is not.
+This repository is for building and operating a local-development Kubernetes cluster that mirrors key AKS hybrid behaviors, using explicit operator-driven stages. It is intentionally optimized to make hybrid cluster setup predictable and less burdensome for developers.
