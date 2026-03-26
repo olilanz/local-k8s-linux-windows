@@ -14,7 +14,19 @@ if ! systemctl is-active --quiet containerd; then
   sudo apt-get install -y containerd
   sudo systemctl enable containerd
   sudo systemctl start containerd
+else
+  log "containerd already running"
 fi
+
+# --- wait for containerd socket ---
+log "Waiting for containerd socket"
+for i in {1..20}; do
+  if [ -S /run/containerd/containerd.sock ]; then
+    log "containerd socket is ready"
+    break
+  fi
+  sleep 1
+done
 
 # --- CNI dirs ---
 log "Ensuring CNI directories"
@@ -33,6 +45,9 @@ else
   log "CNI plugins already present"
 fi
 
+# --- ensure executable ---
+sudo chmod +x /opt/cni/bin/*
+
 # --- k0s binary ---
 if ! command -v k0s >/dev/null 2>&1; then
   log "Installing k0s"
@@ -40,5 +55,19 @@ if ! command -v k0s >/dev/null 2>&1; then
 else
   log "k0s already installed"
 fi
+
+# --- pre-pull required images ---
+log "Pre-pulling required images"
+
+IMAGES=(
+  "quay.io/calico/cni:v3.31.4"
+  "quay.io/calico/node:v3.31.4"
+  "quay.io/calico/kube-controllers:v3.31.4"
+)
+
+for IMAGE in "${IMAGES[@]}"; do
+  log "Pulling $IMAGE"
+  sudo ctr -n k8s.io images pull "$IMAGE"
+done
 
 log "Prerequisites ready"
