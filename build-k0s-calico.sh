@@ -22,50 +22,47 @@ require_file() {
 }
 
 ensure_containerd() {
-  log "Ensuring containerd package/service"
+  log "Ensuring containerd"
 
   if ! dpkg -s containerd >/dev/null 2>&1; then
-    log "Installing containerd"
     sudo apt update
     sudo apt install -y containerd
   fi
 
   sudo systemctl enable containerd >/dev/null 2>&1 || true
   sudo systemctl restart containerd
-  sudo systemctl is-active --quiet containerd || fail "containerd is not running"
+  sudo systemctl is-active --quiet containerd || fail "containerd not running"
 }
 
-ensure_cni_dirs() {
-  log "Ensuring CNI directories"
+ensure_cni() {
+  log "Ensuring CNI dirs + binaries"
+
   sudo mkdir -p /etc/cni/net.d
   sudo mkdir -p /opt/cni/bin
-}
-
-ensure_cni_binaries() {
-  log "Ensuring CNI plugin binaries"
 
   if [ ! -f /opt/cni/bin/bridge ]; then
-    log "CNI plugins missing → installing containernetworking-plugins"
     sudo apt update
     sudo apt install -y containernetworking-plugins
-  else
-    log "CNI plugins already present"
   fi
 }
 
-ensure_k0s_binary() {
+ensure_k0s() {
   if ! command -v k0s >/dev/null 2>&1; then
-    log "Installing k0s binary"
+    log "Installing k0s"
     curl -sSLf https://get.k0s.sh | sudo sh
   fi
 }
 
-install_or_refresh_k0s_service() {
-  log "Refreshing k0s controller service from ${K0S_CONFIG}"
+install_k0s() {
+  log "Installing k0s controller (single-node)"
+
+  K0S_CONFIG_ABS=$(readlink -f "${K0S_CONFIG}")
+
   sudo systemctl stop k0scontroller 2>/dev/null || true
   sudo rm -f /etc/systemd/system/k0scontroller.service
   sudo systemctl daemon-reload
-  sudo k0s install controller --config "${K0S_CONFIG}"
+
+  sudo k0s install controller --single --config "${K0S_CONFIG_ABS}"
 }
 
 start_k0s() {
@@ -74,74 +71,71 @@ start_k0s() {
 }
 
 wait_for_api() {
-  log "Waiting for API server"
-  local tries=0
-  until sudo k0s kubectl get ns >/dev/null 2>&1; do
-    tries=$((tries + 1))
-    if [[ $tries -gt 90 ]]; then
-      fail "Timed out waiting for Kubernetes API"
+  log "Waiting for API"
+
+  for i in {1..90}; do
+    if sudo k0s kubectl get ns >/dev/null 2>&1; then
+      return
     fi
     sleep 2
   done
+
+  fail "API did not come up"
 }
 
-wait_for_node_registration() {
-  log "Waiting for local node registration"
-  local node_name
-  node_name="$(hostname)"
-  local tries=0
-  until sudo k0s kubectl get node "${node_name}" >/dev/null 2>&1; do
-    tries=$((tries + 1))
-    if [[ $tries -gt 90 ]]; then
-      fail "Timed out waiting for node ${node_name} to register"
+wait_for_node() {
+  log "Waiting for node registration"
+
+  for i in {1..90}; do
+    if sudo k0s kubectl get nodes 2>/dev/null | grep -q "Ready\|NotReady"; then
+      return
     fi
     sleep 2
   done
+
+  fail "Node did not register"
 }
 
-wait_for_calico_crds() {
-  log "Waiting for Calico CRDs"
-  local tries=0
-  until sudo k0s kubectl get crd ippools.crd.projectcalico.org >/dev/null 2>&1 \
-    && sudo k0s kubectl get crd ipamconfigs.crd.projectcalico.org >/dev/null 2>&1; do
-    tries=$((tries + 1))
-    if [[ $tries -gt 120 ]]; then
-      fail "Timed out waiting for Calico CRDs"
-    fi
-    sleep 2
-  done
-}
+install_calico() {
+  log "Installing Calico"
 
-apply_cluster_manifests() {
-  log "Applying Calico base"
   sudo k0s kubectl apply -f "${CALICO_MANIFEST}"
+}
 
-  wait_for_calico_crds
+wait_for_calico() {
+  log "Waiting for Calico CRDs"
 
-  log "Applying Calico IPPool"
+  for i in {1..120}; do
+    if sudo k0s kubectl get crd ippools.crd.projectcalico.org >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+
+  log "Applying Calico IPPool + IPAM"
   sudo k0s kubectl apply -f "${CALICO_IPPOOL}"
-
-  log "Applying Calico IPAM"
   sudo k0s kubectl apply -f "${CALICO_IPAM}"
 }
 
-restart_calico_if_present() {
-  log "Restarting calico-node daemonset if present"
-  sudo k0s kubectl rollout restart daemonset/calico-node -n kube-system >/dev/null 2>&1 || true
+wait_for_calico_ready() {
+  log "Waiting for Calico pods"
+
+  for i in {1..120}; do
+    if sudo k0s kubectl get pods -n kube-system | grep calico-node | grep -q Running; then
+      return
+    fi
+    sleep 2
+  done
+
+  fail "Calico did not become ready"
 }
 
-show_status() {
-  log "Current nodes"
-  sudo k0s kubectl get nodes -o wide || true
+status() {
+  log "Cluster status"
 
-  log "Current kube-system pods"
-  sudo k0s kubectl get pods -n kube-system -o wide || true
-
-  log "Current IPPool"
-  sudo k0s kubectl get ippool -o wide || true
-
-  log "Current IPAMConfig"
-  sudo k0s kubectl get ipamconfigs -o yaml || true
+  sudo k0s kubectl get nodes -o wide
+  sudo k0s kubectl get pods -n kube-system -o wide
+  sudo k0s kubectl get ippool || true
 }
 
 main() {
@@ -151,18 +145,21 @@ main() {
   require_file "${CALICO_IPAM}"
 
   ensure_containerd
-  ensure_cni_dirs
-  ensure_cni_binaries
-  ensure_k0s_binary
-  install_or_refresh_k0s_service
+  ensure_cni
+  ensure_k0s
+  install_k0s
   start_k0s
-  wait_for_api
-  wait_for_node_registration
-  apply_cluster_manifests
-  restart_calico_if_present
-  show_status
 
-  log "Build script completed"
+  wait_for_api
+  wait_for_node
+
+  install_calico
+  wait_for_calico
+  wait_for_calico_ready
+
+  status
+
+  log "Cluster build complete"
 }
 
 main "$@"
