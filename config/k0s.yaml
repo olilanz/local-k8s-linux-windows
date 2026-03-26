@@ -30,7 +30,7 @@ spec:
     adminPort: 8133
 
   network:
-    provider: kuberouter   # ← critical for bootstrap
+    provider: custom            # ← critical: disable kube-router
     podCIDR: 10.244.0.0/16
     serviceCIDR: 10.96.0.0/12
     clusterDomain: cluster.local
