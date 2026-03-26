@@ -1,368 +1,356 @@
-# Developer Cluster v1 – Hybrid Windows/Linux Kubernetes (Local Laptop Setup)
+# Local Kubernetes (Linux + Windows) with k0s + Calico
 
-## Purpose
+This repository provides a **deterministic, script-driven setup** for running a local Kubernetes cluster using:
 
-This document defines a **local developer Kubernetes environment** that:
+* **k0s** (single-node control plane)
+* **containerd**
+* **Calico (VXLAN + strictAffinity)** for Windows compatibility
+* **Windows worker node support**
 
-- Supports **both Windows and Linux workloads**
-- Enables **gradual migration from Windows → Linux**
-- Closely resembles **production (AKS-like) behavior**
-- Avoids reliance on Docker Desktop (cost + architecture reasons)
-- Is **reproducible across ~150 developers**
-
-This setup is intended as a **long-lived developer platform**, not just a temporary lab.
+The setup is designed for **repeatability, clarity, and controlled experimentation**, not for production.
 
 ---
 
 # Architecture Overview
 
+```text
+Linux VM (Ubuntu 24.04)
+  └── k0s (single-node control plane)
+      └── containerd
+      └── Calico (VXLAN overlay)
+
+Windows host
+  └── containerd + kubelet
+      └── joins cluster as worker
 ```
 
-Windows 11 Host
-│
-├─ Hyper-V VM (Linux)
-│   ├─ k0s Kubernetes control plane
-│   ├─ Linux worker node
-│   └─ containerd runtime
-│
-├─ Windows Host (acts as Kubernetes node)
-│   ├─ containerd + runhcs
-│   ├─ kubelet + kube-proxy
-│   └─ Windows workloads
-│
-└─ WSL
-└─ Developer tooling only (kubectl, build tools, etc.)
+Key design goals:
 
+* Match production-like behavior (AKS-style cluster)
+* Support **mixed OS workloads (Linux + Windows)**
+* Enable **local development with real networking semantics**
+* Ensure **full rebuild capability without hidden state**
+
+---
+
+# Key Decisions & Learnings
+
+## 1. Networking must be correct from the start
+
+You **cannot safely change the CNI/network model after cluster creation**.
+
+Changing:
+
+* IPIP → VXLAN
+* IPAM behavior
+* overlay mode
+
+requires:
+
+```text
+→ full cluster rebuild
+```
+
+This is why networking is handled as a **separate, explicit step**.
+
+---
+
+## 2. Calico version matters (Ubuntu 24.04)
+
+Ubuntu 24.04 requires a **newer Calico version**.
+
+Older manifests will:
+
+* fail silently
+* hang during CRD or pod startup
+* never produce a usable IPPool
+
+This repo uses a **validated Calico manifest** compatible with:
+
+```text
+Kernel: 6.8.x
+OS: Ubuntu 24.04
 ```
 
 ---
 
-# Key Design Decisions
+## 3. Windows compatibility requirements
 
-## 1. Dedicated Linux VM (Hyper-V) for Control Plane
+To support Windows nodes, Calico must be configured with:
 
-We do **not use WSL for the Kubernetes control plane**.
-
-### Why:
-- WSL networking can reset → cluster instability
-- Control plane must be **stable and long-lived**
-- Hyper-V VM behaves like **real infrastructure**
-
-### Result:
-- Predictable networking
-- Reproducible cluster behavior
-- Matches production mental model
-
----
-
-## 2. k0s + k0sctl for Cluster Bootstrap
-
-We use:
-
-- **k0s** for Kubernetes distribution
-- **k0sctl** for provisioning
-
-### Why:
-- Single binary → simple setup
-- Easy automation for 150 developers
-- No dependency on kubeadm complexity
-- Good fit for local clusters
-
-### Tradeoff:
-- Windows support less documented than kubeadm
-- We compensate by using **SIG-Windows practices for Windows node**
-
----
-
-## 3. Windows Host as Kubernetes Worker Node
-
-The Windows machine itself joins the cluster as a node.
-
-### Stack:
-
-- containerd
-- runhcs
-- kubelet
-- kube-proxy
-
-### Why:
-- Required for Windows containers in Kubernetes
-- Matches real cluster behavior (AKS/EKS)
-- Avoids Docker Desktop limitations
-
----
-
-## 4. No Docker Desktop Dependency
-
-Docker Desktop is intentionally removed from the architecture.
-
-### Why:
-- Cost reduction (~$15 × hundreds of users)
-- Docker Desktop Kubernetes is:
-  - single-node
-  - non-extensible
-  - not suitable for hybrid clusters
-- Runtime mismatch (Kubernetes uses containerd)
-
-### Replacement:
-
-| Use case | Tool |
-|--------|------|
-| Kubernetes runtime | containerd |
-| Windows container builds | Podman (optional) |
-| Linux builds | inside VM / WSL |
-
----
-
-## 5. Calico for Networking
-
-We use:
-
-- **Calico**
-- **VXLAN mode**
-
-### Why:
-- Supports hybrid Linux/Windows clusters
-- Works across VM ↔ host boundary
-- No manual routing required
-- Matches real-world setups
-
----
-
-## Critical Configuration
-
-### VXLAN mode
-
+```text
+ipipMode: Never
+vxlanMode: Always
+strictAffinity: true
 ```
 
-Overlay networking across nodes
+Without this:
 
-```
-
-### strictAffinity = true
-
-Required for mixed OS clusters:
-
-```
-
-Prevents Linux nodes from borrowing Windows IPs
-
+```text
+→ Windows nodes fail to join or behave unpredictably
 ```
 
 ---
 
-## 6. containerd Everywhere
+## 4. Determinism over convenience
 
-Kubernetes runtime:
+All scripts are designed to be:
 
+```text
+✔ re-entrant
+✔ explicit
+✔ state-resetting when required
 ```
 
-kubelet → containerd → runhcs (Windows) / runc (Linux)
-
-```
-
-### Why:
-- Required since Kubernetes 1.24+
-- Matches production clusters
-- Supported by Calico and Windows nodes
+No hidden assumptions.
 
 ---
 
-## 7. WSL = Development Only
+## 5. Cluster state lives in `/var/lib/k0s`
 
-WSL is **not part of the cluster**.
+This is critical:
 
-### Used for:
-- kubectl
-- Helm
-- scripts
-- builds
-
-### Not used for:
-- control plane
-- node runtime
-
----
-
-# Networking Model
-
-## Node IPs
-
+```text
+/var/lib/k0s = the cluster
 ```
 
-Linux VM:     e.g. 192.168.x.x
-Windows host: e.g. 192.168.x.x
+If not removed:
 
-```
-
-## Pod network
-
-```
-
-10.244.0.0/16
-
-```
-
-## Flow example
-
-Linux pod → Windows pod:
-
-```
-
-Pod → VXLAN → Windows node → HNS → Pod
-
-```
-
-Windows pod → Linux pod:
-
-```
-
-Pod → HNS → VXLAN → Linux node → Pod
-
+```text
+→ previous state leaks
+→ kubelet may not start
+→ node may not register
 ```
 
 ---
 
-# Hyper-V Configuration
+## 6. Script separation (important)
 
-Use:
+Instead of one large script, the system is split into **independent stages**.
 
-```
+This avoids:
 
-External virtual switch
-
-```
-
-### Why:
-- Stable networking
-- VM reachable from host
-- Required for cluster communication
-
-Avoid:
-- Default NAT switch
-
----
-
-# Developer Workflow Model
-
-Developers do **not run full system**.
-
-They run:
-
-```
-
-Platform services (Kubernetes)
-
-* selected service slice
-* local service override (optional)
-
-```
-
-Example:
-
-```
-
-Kubernetes
-├─ shared services
-├─ service A
-├─ service B
-
-Local machine
-└─ service C (debugging)
-
+```text
+❌ debugging everything at once
+❌ hidden failures
+❌ state drift
 ```
 
 ---
 
-# Migration Model
+# Repository Structure
 
-Supports gradual transition:
+```text
+config/
+  k0s.yaml
+  calico.yaml
+  calico-ippool.yaml
+  calico-ipam.yaml
 
-## Stage 1
-- Windows services on Windows node
-
-## Stage 2
-- New services on Linux node
-
-## Stage 3
-- Dual deployment
-
+scripts:
+  01-prereqs.sh
+  02-cluster.sh
+  03-network-calico.sh
+  04-smoke-nginx.sh
+  05-diagnostics.sh
+  99-cleanup.sh
 ```
 
-Service
-├─ Windows pod
-└─ Linux pod
+---
 
+# Script Responsibilities
+
+## `01-prereqs.sh`
+
+Prepares the host:
+
+* installs containerd
+* installs CNI plugins
+* installs k0s
+
+Does **not** touch cluster state.
+
+---
+
+## `02-cluster.sh`
+
+Creates a **clean k0s cluster**:
+
+* wipes previous cluster state
+* installs k0s controller (`--single`)
+* starts cluster
+* waits for node registration
+
+---
+
+## `03-network-calico.sh`
+
+Installs networking:
+
+* applies Calico manifest
+* applies IPPool (VXLAN)
+* applies IPAM (strictAffinity)
+* waits for readiness
+
+---
+
+## `04-smoke-nginx.sh`
+
+Validates cluster functionality:
+
+* deploys nginx
+* exposes service
+* verifies in-cluster connectivity
+
+---
+
+## `05-diagnostics.sh`
+
+Debug tool:
+
+* nodes
+* pods
+* services
+* Calico state
+* kubelet process
+* container runtime
+* API health
+
+Use this at any time.
+
+---
+
+## `99-cleanup.sh`
+
+Fully destructive reset:
+
+* stops k0s
+* removes cluster state
+* clears CNI + networking
+* resets iptables
+* restarts containerd
+
+Guarantees:
+
+```text
+→ clean slate
 ```
 
-## Stage 4
-- Remove Windows node
-
 ---
 
-# Why This Architecture
+# Usage Workflow
 
-This setup was chosen because it:
+## Clean rebuild (recommended)
 
-## Matches real-world clusters
+```bash
+./99-cleanup.sh
+sudo reboot
 
-- Similar to AKS mixed node pools
-- containerd-based
-- Calico-supported networking
-
-## Enables migration
-
-- Windows and Linux workloads coexist
-- Direct comparison possible
-
-## Is reproducible
-
-- Scriptable bootstrap
-- Works on developer laptops
-
-## Avoids known issues
-
-- No WSL control plane instability
-- No Docker Desktop limitations
-- No single-node cluster constraints
-
-## Balances simplicity and correctness
-
-- k0s simplifies cluster setup
-- SIG-Windows practices ensure Windows compatibility
-
----
-
-# Known Risks
-
-- Windows node bootstrap complexity
-- Calico configuration errors
-- VM ↔ host networking issues
-- kube-proxy on Windows
-
----
-
-# Next Steps for Implementation
-
-1. Create Hyper-V VM
-2. Install k0s + k0sctl
-3. Initialize cluster
-4. Install Calico (VXLAN)
-5. Configure Windows node:
-   - containerd
-   - kubelet
-   - kube-proxy
-6. Join Windows node
-7. Validate cross-OS networking
-8. Add base services (ingress, DNS, telemetry)
-
----
-
-# Goal
-
-Provide developers with:
-
-> A local Kubernetes cluster that behaves like production, supports hybrid workloads, and enables a multi-year migration from Windows to Linux.
-
----
+./01-prereqs.sh
+./02-cluster.sh
+./03-network-calico.sh
+./04-smoke-nginx.sh
 ```
+
+---
+
+## Diagnostics
+
+```bash
+./05-diagnostics.sh
+```
+
+---
+
+# Expected State
+
+After successful setup:
+
+```text
+Nodes:
+  Linux control-plane → Ready
+  Windows worker     → Ready (after join)
+
+Calico:
+  calico-node        → Running
+  VXLAN              → Active
+
+Workloads:
+  nginx              → reachable via cluster IP
+```
+
+---
+
+# Troubleshooting Principles
+
+## If cluster fails (`02-cluster.sh`)
+
+Check:
+
+```bash
+ps aux | grep kubelet
+```
+
+If missing:
+
+```text
+→ cluster state was not clean
+```
+
+---
+
+## If Calico fails (`03-network-calico.sh`)
+
+Check:
+
+```bash
+kubectl get crd | grep ippool
+kubectl get pods -n kube-system
+```
+
+Common cause:
+
+```text
+→ incompatible Calico version
+```
+
+---
+
+## If pods don’t start
+
+Check:
+
+```bash
+./05-diagnostics.sh
+```
+
+Focus on:
+
+* containerd
+* CNI directories
+* node readiness
+
+---
+
+# Scope & Intent
+
+This setup is intended for:
+
+* local Kubernetes experimentation
+* hybrid Linux/Windows validation
+* architecture prototyping
+
+It is **not** intended for production use.
+
+---
+
+# Final Note
+
+The most important invariant in this setup:
+
+```text
+Correct networking must be defined before cluster creation.
+```
+
+Everything else is recoverable.
+Networking is not.
