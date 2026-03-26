@@ -1,69 +1,95 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-log() { echo -e "\n[$(date +%H:%M:%S)] $*"; }
+log() {
+  echo ""
+  echo "[$(date +%H:%M:%S)] $1"
+}
 
-CONFIG_FILE="./config/k0s.yaml"
+K0S_CONFIG_PATH="/etc/k0s/k0s.yaml"
+KUBECTL="sudo k0s kubectl"
 
-if [ ! -f "$CONFIG_FILE" ]; then
-  echo "ERROR: $CONFIG_FILE not found"
-  exit 1
-fi
+# ------------------------------------------------------------------------------
+# Pre-flight
+# ------------------------------------------------------------------------------
 
-# --- stop previous cluster ---
-log "Stopping k0s (if running)"
-sudo k0s stop 2>/dev/null || true
+log "Ensuring clean state (controller only)"
 
-# --- remove systemd services ---
-log "Removing old k0s services"
-sudo systemctl disable k0scontroller 2>/dev/null || true
-sudo systemctl disable k0sworker 2>/dev/null || true
-sudo rm -f /etc/systemd/system/k0scontroller.service
-sudo rm -f /etc/systemd/system/k0sworker.service
+sudo systemctl stop k0sworker 2>/dev/null || true
+sudo systemctl stop k0scontroller 2>/dev/null || true
+
+# Clean stale runtime artifacts (non-destructive)
+sudo rm -f /run/k0s/status.sock 2>/dev/null || true
+
+# ------------------------------------------------------------------------------
+# Install controller (NO worker)
+# ------------------------------------------------------------------------------
+
+log "Installing k0s controller (control-plane only)"
+
+sudo k0s install controller \
+  --config "${K0S_CONFIG_PATH}" \
+  --enable-worker=false
+
+# ------------------------------------------------------------------------------
+# Start controller
+# ------------------------------------------------------------------------------
+
+log "Starting k0s controller"
+
 sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
+sudo systemctl enable k0scontroller
+sudo systemctl start k0scontroller
 
-# --- kill leftovers ---
-log "Killing leftover processes"
-sudo pkill -f kubelet 2>/dev/null || true
-sudo pkill -f containerd-shim 2>/dev/null || true
+# ------------------------------------------------------------------------------
+# Wait for API to come up
+# ------------------------------------------------------------------------------
 
-# --- unmount leftovers ---
-log "Unmounting leftovers"
-mount | grep -E '/var/lib/k0s|/var/lib/kubelet' 2>/dev/null | \
-awk '{print $3}' | sort -r | while read -r m; do
-  sudo umount -l "$m" 2>/dev/null || true
-done || true
+log "Waiting for Kubernetes API"
 
-# --- wipe state ---
-log "Removing cluster state"
-sudo rm -rf /var/lib/k0s
-sudo rm -rf /var/lib/kubelet
-sudo rm -rf /etc/k0s
-
-# --- ensure containerd ---
-log "Ensuring containerd is running"
-if ! systemctl is-active --quiet containerd; then
-  sudo systemctl start containerd
-fi
-
-# --- install controller ---
-log "Installing k0s controller"
-sudo k0s install controller --config "$CONFIG_FILE"
-
-# --- start controller ---
-log "Starting k0s controller"
-sudo k0s start
-
-# --- wait for API ---
-log "Waiting for API server"
-for i in {1..60}; do
-  if sudo k0s kubectl get --raw=/healthz >/dev/null 2>&1; then
-    log "API is up"
-    exit 0
-  fi
+# Wait for port first
+until sudo ss -tulnp | grep -q ":6443"; do
   sleep 2
 done
 
-echo "ERROR: API server did not become ready"
-exit 1
+# Wait for API health
+until curl -k https://127.0.0.1:6443/healthz >/dev/null 2>&1; do
+  sleep 2
+done
+
+log "API is responding"
+
+# ------------------------------------------------------------------------------
+# Setup kubeconfig (optional, but useful for debugging)
+# ------------------------------------------------------------------------------
+
+log "Setting up kubeconfig"
+
+mkdir -p "$HOME/.kube"
+sudo cp /var/lib/k0s/pki/admin.conf "$HOME/.kube/config"
+sudo chown "$(id -u)":"$(id -g)" "$HOME/.kube/config"
+
+export KUBECONFIG="$HOME/.kube/config"
+
+# ------------------------------------------------------------------------------
+# Verify control-plane-only state
+# ------------------------------------------------------------------------------
+
+log "Verifying control plane only (no worker expected)"
+
+$KUBECTL get nodes || true
+
+# ------------------------------------------------------------------------------
+# Inspect system pods (some may be Pending until worker joins)
+# ------------------------------------------------------------------------------
+
+log "Inspecting kube-system pods"
+
+$KUBECTL get pods -n kube-system -o wide
+
+# ------------------------------------------------------------------------------
+# Done
+# ------------------------------------------------------------------------------
+
+log "Control plane is ready (no worker running on this node)"
