@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-log() {
-  echo ""
-  echo "[$(date +%H:%M:%S)] $1"
-}
+# Purpose: Install and start a clean k0s control plane on the Linux VM.
+# Preconditions: Prerequisites stage completed, valid /etc/k0s/k0s.yaml present.
+# Invariants: Controller-only installation; worker disabled on this node.
+# Inputs: K0S_CONFIG_PATH.
+# Idempotency: Safe to rerun for controller reconciliation.
+# Postconditions: k0scontroller service active and Kubernetes API reachable.
+# Safe rerun notes: Existing controller service may be reinstalled/re-enabled.
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "${SCRIPT_DIR}/scripts/lib/common.sh"
+init_script "${BASH_SOURCE[0]}"
+register_error_trap
 
 K0S_CONFIG_PATH="/etc/k0s/k0s.yaml"
 KUBECTL="sudo k0s kubectl"
@@ -93,3 +102,4 @@ $KUBECTL get pods -n kube-system -o wide
 # ------------------------------------------------------------------------------
 
 log "Control plane is ready (no worker running on this node)"
+summary "./03-network.sh"

@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Purpose: Provide a broad validation snapshot of cluster and host runtime state.
+# Preconditions: Any prior stage may have been run; API access may be partial.
+# Invariants: Validation is observational; avoid mutating cluster state.
+# Inputs: Current cluster and host service/process state.
+# Idempotency: Safe to rerun; read-only diagnostics with tolerant error handling.
+# Postconditions: Operator receives consolidated diagnostics view.
+# Safe rerun notes: Re-running is encouraged during troubleshooting.
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "${SCRIPT_DIR}/scripts/lib/common.sh"
+init_script "${BASH_SOURCE[0]}"
+register_error_trap
+
 echo ""
 echo "===== NODES ====="
 sudo k0s kubectl get nodes -o wide || true
@@ -36,3 +50,4 @@ sudo k0s kubectl get --raw=/healthz || true
 
 echo ""
 echo "===== END ====="
+summary "Run ./99-cleanup.sh when contamination is suspected"

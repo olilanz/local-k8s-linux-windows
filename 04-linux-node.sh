@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-log() { echo -e "\n[$(date +%H:%M:%S)] $*"; }
-fail() { echo "ERROR: $*" >&2; exit 1; }
+# Purpose: Join the Linux node as a worker and verify readiness-critical components.
+# Preconditions: Control plane and networking stages are complete and healthy.
+# Invariants: Worker join is explicit and validated before proceeding.
+# Inputs: live API state, generated worker token, node hostname.
+# Idempotency: Safe to rerun with local worker service/state reconciliation.
+# Postconditions: Linux worker service active, node Ready, calico-node Ready on this node.
+# Safe rerun notes: Existing worker service/state is cleaned before re-installing worker role.
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "${SCRIPT_DIR}/scripts/lib/common.sh"
+init_script "${BASH_SOURCE[0]}"
 
 NODE_NAME="$(hostname -s)"
 WORKER_TOKEN_FILE="/tmp/k0s-worker-token"
@@ -57,7 +67,7 @@ dump_diagnostics() {
   fi
 }
 
-trap 'dump_diagnostics' ERR
+trap 'rc=$?; dump_diagnostics; trap_err "${LINENO}" "${BASH_COMMAND}" "${rc}"' ERR
 
 log "Checking API availability"
 sudo k0s kubectl get --raw=/healthz >/dev/null 2>&1 \
@@ -187,3 +197,4 @@ fi
 log "Linux worker installation complete"
 sudo k0s kubectl get nodes -o wide
 sudo k0s kubectl get pods -n kube-system -o wide
+summary "./10-nginx.sh"

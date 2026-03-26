@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-log() { echo -e "\n[$(date +%H:%M:%S)] $*"; }
+# Purpose: Perform a destructive local cleanup of cluster/runtime/network state.
+# Preconditions: Operator intends full local reset and accepts destructive side effects.
+# Invariants: Cleanup removes local cluster artifacts to restore a clean rebuild baseline.
+# Inputs: Current host service/process/runtime/network state.
+# Idempotency: Safe to rerun; missing resources are tolerated.
+# Postconditions: k0s/container runtime leftovers and CNI state are cleared as much as possible.
+# Safe rerun notes: Reboot after cleanup is recommended before sequential rebuild.
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "${SCRIPT_DIR}/scripts/lib/common.sh"
+init_script "${BASH_SOURCE[0]}"
+register_error_trap
 
 # --- stop k0s ---
 log "Stopping k0s services"
@@ -75,3 +87,5 @@ mount | grep -E 'k0s|kubelet|containerd' || true
 echo
 echo "Remaining processes (should be empty):"
 ps aux | grep -E 'kubelet|k0s|containerd-shim' | grep -v grep || true
+
+summary "Reboot, then restart with ./01-prereqs.sh"

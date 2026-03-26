@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-log() { echo -e "\n[$(date +%H:%M:%S)] $*"; }
+# Purpose: Install and verify host prerequisites for local cluster stages.
+# Preconditions: Ubuntu-like host, sudo privileges, network access for package/image pulls.
+# Invariants: Does not create/modify Kubernetes cluster control-plane state.
+# Inputs: ARCH, CNI_VERSION, K0S_VERSION.
+# Idempotency: Safe to rerun; already-present components are detected and reused.
+# Postconditions: containerd running, CNI binaries present, k0s installed, base images pre-pulled.
+# Safe rerun notes: Re-running may refresh package metadata and repull images.
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "${SCRIPT_DIR}/scripts/lib/common.sh"
+init_script "${BASH_SOURCE[0]}"
+register_error_trap
 
 ARCH=amd64
 CNI_VERSION="v1.5.1"
@@ -70,4 +82,4 @@ for IMAGE in "${IMAGES[@]}"; do
   sudo ctr -n k8s.io images pull "$IMAGE"
 done
 
-log "Prerequisites ready"
+summary "./02-cluster.sh"

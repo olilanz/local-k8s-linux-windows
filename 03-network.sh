@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-log() { echo -e "\n[$(date +%H:%M:%S)] $*"; }
+# Purpose: Apply Calico networking configuration to the running cluster.
+# Preconditions: Control plane is running and API is reachable.
+# Invariants: Networking stage is explicit and separate from cluster bootstrap.
+# Inputs: config/calico.yaml, config/calico-ippool.yaml, config/calico-ipam.yaml.
+# Idempotency: Safe to rerun; manifests are applied declaratively.
+# Postconditions: Calico resources applied and base CRDs available.
+# Safe rerun notes: Re-apply may update resources but should preserve intent.
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "${SCRIPT_DIR}/scripts/lib/common.sh"
+init_script "${BASH_SOURCE[0]}"
+register_error_trap
 
 # --- ensure API reachable ---
 log "Checking API availability"
@@ -36,4 +48,4 @@ sudo k0s kubectl apply -f ./config/calico-ipam.yaml
 log "Checking Calico control-plane components"
 sudo k0s kubectl get pods -n kube-system || true
 
-log "Network installation complete"
+summary "./04-linux-node.sh"
