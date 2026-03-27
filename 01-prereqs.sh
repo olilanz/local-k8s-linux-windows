@@ -19,27 +19,7 @@ ARCH=amd64
 CNI_VERSION="v1.5.1"
 K0S_VERSION="v1.35.2+k0s.0"
 
-SUDO_BIN=""
-if [[ "${EUID}" -eq 0 ]]; then
-  log "Running as root"
-elif command -v sudo >/dev/null 2>&1; then
-  if sudo -n true >/dev/null 2>&1; then
-    SUDO_BIN="sudo"
-    log "Using non-interactive sudo"
-  else
-    fail "This script needs privileged operations. Run with root privileges or enable non-interactive sudo for this session."
-  fi
-else
-  fail "sudo is required when not running as root"
-fi
-
-as_root() {
-  if [[ -n "${SUDO_BIN}" ]]; then
-    "${SUDO_BIN}" "$@"
-  else
-    "$@"
-  fi
-}
+require_privileged_access
 
 # --- containerd ---
 log "Ensuring containerd"

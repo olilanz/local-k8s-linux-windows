@@ -17,30 +17,10 @@ AUTO_JOIN_LOCAL_WORKER="${AUTO_JOIN_LOCAL_WORKER:-true}"
 WORKER_DATA_DIR="${WORKER_DATA_DIR:-/var/lib/k0s-worker}"
 KUBELET_ROOT_DIR="${KUBELET_ROOT_DIR:-/var/lib/kubelet-worker}"
 
-SUDO_BIN=""
-if [[ "${EUID}" -eq 0 ]]; then
-  log "Running as root"
-elif command -v sudo >/dev/null 2>&1; then
-  if sudo -n true >/dev/null 2>&1; then
-    SUDO_BIN="sudo"
-    log "Using non-interactive sudo"
-  else
-    fail "This script needs privileged operations. Run with root privileges or enable non-interactive sudo for this session."
-  fi
-else
-  fail "sudo is required when not running as root"
-fi
-
-as_root() {
-  if [[ -n "${SUDO_BIN}" ]]; then
-    "${SUDO_BIN}" "$@"
-  else
-    "$@"
-  fi
-}
+require_privileged_access
 
 log "Checking API availability"
-as_root k0s kubectl get --raw=/healthz >/dev/null 2>&1 \
+k0s_kubectl get --raw=/healthz >/dev/null 2>&1 \
   || fail "API server not reachable. Run 02-cluster.sh first."
 
 log "Creating worker token output directory"

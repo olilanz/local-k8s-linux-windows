@@ -63,6 +63,16 @@ This environment is for local experimentation, validation, and development workf
 4. Include contextual comments that explain why, not just what.
 5. Record assumptions in a standard script header section.
 
+## Shared Helper Usage Policy
+
+To keep stage scripts simple for human readers:
+
+1. Place reusable privilege and command wrappers in [`scripts/lib/common.sh`](scripts/lib/common.sh).
+2. Use [`require_privileged_access()`](scripts/lib/common.sh:89) instead of re-implementing root/sudo checks per script.
+3. Use [`as_root()`](scripts/lib/common.sh:109) for privileged commands rather than raw `sudo` in stage scripts.
+4. Use [`k0s_kubectl()`](scripts/lib/common.sh:117) for cluster API calls that require privilege.
+5. Keep stage scripts focused on stage intent and operator-readable flow; move plumbing into shared helpers.
+
 ## Script Header Standard
 
 Each stage script should begin with a concise header containing:
@@ -106,12 +116,6 @@ Each stage script should begin with a concise header containing:
 - Prefer per-run log files using `logs/<script-name>-<timestamp>.log`.
 - Keep console output high-signal by mirroring key progress lines only.
 - Preserve detailed command and diagnostic output in the log files for post-run analysis.
-
-## Development Surface Notes
-
-- Linux-oriented development may later run in WSL.
-- Windows-oriented development may run in Visual Studio 2026 or VS Code on Windows.
-- Script UX must remain readable to cross-platform operators.
 
 ## Change Management Rule
 

@@ -63,6 +63,21 @@ Implementation notes such as whether runtime sharing is viable in specific futur
 
 ---
 
+## Intended Developer Surfaces
+
+This section describes who the cluster is intended to serve and where developer workflows are expected to run.
+
+- **WSL2 Linux development surface**: developers may run Linux-first tools and workflows from WSL2 while targeting this cluster remotely.
+- **Windows host development surface**: developers may run Windows-native tooling such as VS Code or Visual Studio while targeting this cluster remotely.
+- **Shared operator expectation**: cluster access should be documented so `kubectl` can be used consistently from both Linux and Windows-oriented development surfaces.
+
+### Planned Surface: Argo CD
+
+- A GitOps-oriented surface based on Argo CD is a planned future addition.
+- Argo CD workflow integration is **not implemented yet** in this repository.
+
+---
+
 ## Script Structure and Usage
 
 ### Repository Structure

@@ -2,6 +2,8 @@
 
 # Shared helpers for stage scripts.
 
+SUDO_BIN=""
+
 init_script() {
   local script_path="$1"
   SCRIPT_NAME="$(basename "$script_path")"
@@ -82,6 +84,38 @@ trap_err() {
 
 register_error_trap() {
   trap 'trap_err "${LINENO}" "${BASH_COMMAND}" "$?"' ERR
+}
+
+require_privileged_access() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    SUDO_BIN=""
+    log "Running as root"
+    return 0
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    fail "sudo is required when not running as root"
+  fi
+
+  if sudo -n true >/dev/null 2>&1; then
+    SUDO_BIN="sudo"
+    log "Using non-interactive sudo"
+    return 0
+  fi
+
+  fail "This script needs privileged operations. Run with root privileges or enable non-interactive sudo for this session."
+}
+
+as_root() {
+  if [[ -n "${SUDO_BIN}" ]]; then
+    "${SUDO_BIN}" "$@"
+  else
+    "$@"
+  fi
+}
+
+k0s_kubectl() {
+  as_root k0s kubectl "$@"
 }
 
 summary() {

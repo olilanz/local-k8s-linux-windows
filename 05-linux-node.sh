@@ -22,27 +22,7 @@ CLEAN_WORKER_STATE="${CLEAN_WORKER_STATE:-false}"
 CONTROLLER_KUBECONFIG="${CONTROLLER_KUBECONFIG:-/home/ocl/.kube/config}"
 ALLOW_SAME_HOST_WORKER="${ALLOW_SAME_HOST_WORKER:-false}"
 
-SUDO_BIN=""
-if [[ "${EUID}" -eq 0 ]]; then
-  log "Running as root"
-elif command -v sudo >/dev/null 2>&1; then
-  if sudo -n true >/dev/null 2>&1; then
-    SUDO_BIN="sudo"
-    log "Using non-interactive sudo"
-  else
-    fail "This script needs privileged operations. Run with root privileges or enable non-interactive sudo for this session."
-  fi
-else
-  fail "sudo is required when not running as root"
-fi
-
-as_root() {
-  if [[ -n "${SUDO_BIN}" ]]; then
-    "${SUDO_BIN}" "$@"
-  else
-    "$@"
-  fi
-}
+require_privileged_access
 
 if as_root systemctl is-active --quiet k0scontroller; then
   if [[ "${ALLOW_SAME_HOST_WORKER}" != "true" ]]; then

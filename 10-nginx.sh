@@ -14,19 +14,20 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/scripts/lib/common.sh"
 init_script "${BASH_SOURCE[0]}"
 register_error_trap
+require_privileged_access
 
 log "Deploying nginx"
-sudo k0s kubectl delete deployment nginx 2>/dev/null || true
-sudo k0s kubectl delete svc nginx 2>/dev/null || true
+k0s_kubectl delete deployment nginx 2>/dev/null || true
+k0s_kubectl delete svc nginx 2>/dev/null || true
 
-sudo k0s kubectl create deployment nginx --image=nginx
-sudo k0s kubectl expose deployment nginx --port=80 --type=ClusterIP
+k0s_kubectl create deployment nginx --image=nginx
+k0s_kubectl expose deployment nginx --port=80 --type=ClusterIP
 
 log "Waiting for pod"
-sudo k0s kubectl rollout status deployment/nginx --timeout=120s
+k0s_kubectl rollout status deployment/nginx --timeout=120s
 
 log "Testing connectivity"
-sudo k0s kubectl run curl --rm -it --image=curlimages/curl --restart=Never -- \
+k0s_kubectl run curl --rm -it --image=curlimages/curl --restart=Never -- \
   curl -s http://nginx | head -n 5
 
 summary "./20-validate.sh"
