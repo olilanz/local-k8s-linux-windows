@@ -88,11 +88,11 @@ chmod 600 "${TMP_KUBECONFIG}"
 # ------------------------------------------------------------------------------
 
 log "Patching server URL to ${API_SERVER}"
-CLUSTER_NAME="$(KUBECONFIG="${TMP_KUBECONFIG}" as_user kubectl config view \
+CLUSTER_NAME="$(as_user kubectl --kubeconfig="${TMP_KUBECONFIG}" config view \
   --output=jsonpath='{.clusters[0].name}')"
 [[ -n "${CLUSTER_NAME}" ]] || fail "Could not determine cluster name from fetched kubeconfig"
 log "Cluster name: ${CLUSTER_NAME}"
-KUBECONFIG="${TMP_KUBECONFIG}" as_user kubectl config set-cluster "${CLUSTER_NAME}" \
+as_user kubectl --kubeconfig="${TMP_KUBECONFIG}" config set-cluster "${CLUSTER_NAME}" \
   --server="${API_SERVER}"
 
 # ------------------------------------------------------------------------------
@@ -109,8 +109,9 @@ chmod 600 "${LOCAL_KUBECONFIG}"
 
 log "Merging into ${LOCAL_KUBECONFIG}"
 MERGED="$(mktemp)"
-KUBECONFIG="${LOCAL_KUBECONFIG}:${TMP_KUBECONFIG}" as_user kubectl config view --flatten > "${MERGED}"
-as_user mv "${MERGED}" "${LOCAL_KUBECONFIG}"
+as_user kubectl --kubeconfig="${LOCAL_KUBECONFIG}" config view --flatten \
+  --merge "${TMP_KUBECONFIG}" > "${MERGED}"
+mv "${MERGED}" "${LOCAL_KUBECONFIG}"
 chmod 600 "${LOCAL_KUBECONFIG}"
 
 # ------------------------------------------------------------------------------
@@ -119,25 +120,26 @@ chmod 600 "${LOCAL_KUBECONFIG}"
 
 # The source context name from k0s admin.conf is typically "k0s-admin@k0s" or "admin@k0s";
 # rename whatever was imported to CONTEXT_NAME.
-IMPORTED_CONTEXT="$(KUBECONFIG="${TMP_KUBECONFIG}" as_user kubectl config current-context)"
+IMPORTED_CONTEXT="$(as_user kubectl --kubeconfig="${TMP_KUBECONFIG}" config current-context)"
 
 if [[ "${IMPORTED_CONTEXT}" != "${CONTEXT_NAME}" ]]; then
   log "Renaming context '${IMPORTED_CONTEXT}' -> '${CONTEXT_NAME}'"
-  KUBECONFIG="${LOCAL_KUBECONFIG}" as_user kubectl config rename-context "${IMPORTED_CONTEXT}" "${CONTEXT_NAME}" 2>/dev/null || true
+  as_user kubectl --kubeconfig="${LOCAL_KUBECONFIG}" config rename-context \
+    "${IMPORTED_CONTEXT}" "${CONTEXT_NAME}" 2>/dev/null || true
 fi
 
 log "Setting '${CONTEXT_NAME}' as current context"
-KUBECONFIG="${LOCAL_KUBECONFIG}" as_user kubectl config use-context "${CONTEXT_NAME}"
+as_user kubectl --kubeconfig="${LOCAL_KUBECONFIG}" config use-context "${CONTEXT_NAME}"
 
 # ------------------------------------------------------------------------------
 # Verify
 # ------------------------------------------------------------------------------
 
 log "Verifying API connectivity"
-KUBECONFIG="${LOCAL_KUBECONFIG}" as_user kubectl cluster-info \
+as_user kubectl --kubeconfig="${LOCAL_KUBECONFIG}" cluster-info \
   || fail "kubectl cluster-info failed — check API server reachability and TLS trust."
 
 log "Listing nodes"
-KUBECONFIG="${LOCAL_KUBECONFIG}" as_user kubectl get nodes -o wide
+as_user kubectl --kubeconfig="${LOCAL_KUBECONFIG}" get nodes -o wide
 
 log "Done. kubectl context '${CONTEXT_NAME}' is active and verified."
