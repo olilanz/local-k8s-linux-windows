@@ -15,12 +15,13 @@ VM_USER="${SUDO_USER:-${USER}}"
 DOCKER_HOST="ssh://${VM_USER}@${VM_HOST}"
 SSH_OPTS=(-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -l "${VM_USER}")
 
-# When invoked via sudo, run ssh as the original user so their ~/.ssh and agent are available.
-ssh_as_user() {
+# When invoked via sudo, run commands as the original user so their ~/.ssh, agent,
+# and DOCKER_CONFIG are available rather than root's.
+as_user() {
   if [[ -n "${SUDO_USER:-}" ]]; then
-    sudo -u "${VM_USER}" ssh "${SSH_OPTS[@]}" "$@"
+    sudo -u "${VM_USER}" "$@"
   else
-    ssh "${SSH_OPTS[@]}" "$@"
+    "$@"
   fi
 }
 
@@ -34,26 +35,26 @@ fail() { printf '\n[%s] [ERROR] %s\n' "$(date +%H:%M:%S)" "$*" >&2; exit 1; }
 if ! command -v docker >/dev/null 2>&1; then
   log "Docker CLI not found — installing via official Docker apt repository"
 
-  command -v curl >/dev/null 2>&1 || sudo apt-get install -y curl
+  command -v curl >/dev/null 2>&1 || apt-get install -y curl
 
   # Add Docker's official GPG key and repository (idempotent)
-  sudo apt-get update -y
-  sudo apt-get install -y ca-certificates gnupg
+  apt-get update -y
+  apt-get install -y ca-certificates gnupg
 
-  sudo install -m 0755 -d /etc/apt/keyrings
+  install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-    | sudo gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
-  sudo chmod a+r /etc/apt/keyrings/docker.gpg
+    | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+  chmod a+r /etc/apt/keyrings/docker.gpg
 
   echo \
     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
 https://download.docker.com/linux/ubuntu \
 $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" \
-    | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+    | tee /etc/apt/sources.list.d/docker.list >/dev/null
 
-  sudo apt-get update -y
+  apt-get update -y
   # Install the CLI only — no daemon needed in WSL
-  sudo apt-get install -y docker-ce-cli docker-buildx-plugin docker-compose-plugin
+  apt-get install -y docker-ce-cli docker-buildx-plugin docker-compose-plugin
   log "Docker CLI installed: $(docker --version)"
 else
   log "Docker CLI already present: $(docker --version)"
@@ -64,7 +65,7 @@ fi
 # ------------------------------------------------------------------------------
 
 log "Checking SSH connectivity to '${VM_USER}@${VM_HOST}'"
-ssh_as_user "${VM_HOST}" true \
+as_user ssh "${SSH_OPTS[@]}" "${VM_HOST}" true \
   || fail "Cannot reach '${VM_USER}@${VM_HOST}' via SSH. Ensure the VM is running and SSH key auth is configured."
 
 # ------------------------------------------------------------------------------
@@ -72,10 +73,10 @@ ssh_as_user "${VM_HOST}" true \
 # ------------------------------------------------------------------------------
 
 log "Removing existing Docker context '${CONTEXT_NAME}' if present"
-docker context rm "${CONTEXT_NAME}" 2>/dev/null || true
+as_user docker context rm "${CONTEXT_NAME}" 2>/dev/null || true
 
 log "Creating Docker context '${CONTEXT_NAME}' -> ${DOCKER_HOST}"
-docker context create "${CONTEXT_NAME}" \
+as_user docker context create "${CONTEXT_NAME}" \
   --description "Docker engine on the kubernetes VM (via SSH)" \
   --docker "host=${DOCKER_HOST}"
 
@@ -84,14 +85,14 @@ docker context create "${CONTEXT_NAME}" \
 # ------------------------------------------------------------------------------
 
 log "Setting '${CONTEXT_NAME}' as active Docker context"
-docker context use "${CONTEXT_NAME}"
+as_user docker context use "${CONTEXT_NAME}"
 
 # ------------------------------------------------------------------------------
 # Verify
 # ------------------------------------------------------------------------------
 
 log "Verifying Docker connectivity"
-docker info --format 'Server version: {{.ServerVersion}}' \
+as_user docker info --format 'Server version: {{.ServerVersion}}' \
   || fail "Docker connectivity check failed — review VM Docker daemon and SSH config"
 
 log "Done. Docker context '${CONTEXT_NAME}' is active and verified."
