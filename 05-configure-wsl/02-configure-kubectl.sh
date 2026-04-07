@@ -12,10 +12,12 @@ set -euo pipefail
 
 CONTEXT_NAME="kubernetes"
 VM_HOST="kubernetes"
+VM_USER="${USER}"
 API_SERVER="https://${VM_HOST}:6443"
 REMOTE_KUBECONFIG="/var/lib/k0s/pki/admin.conf"
 LOCAL_KUBECONFIG="${HOME}/.kube/config"
 TMP_KUBECONFIG="$(mktemp)"
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -l "${VM_USER}")
 
 log()  { printf '\n[%s] [INFO]  %s\n' "$(date +%H:%M:%S)" "$*"; }
 fail() { printf '\n[%s] [ERROR] %s\n' "$(date +%H:%M:%S)" "$*" >&2; rm -f "${TMP_KUBECONFIG}"; exit 1; }
@@ -55,16 +57,16 @@ fi
 # Pre-flight
 # ------------------------------------------------------------------------------
 
-log "Checking SSH connectivity to '${VM_HOST}'"
-ssh -o BatchMode=yes -o ConnectTimeout=10 "${VM_HOST}" true \
-  || fail "Cannot reach '${VM_HOST}' via SSH. Ensure the VM is running and SSH key auth is configured."
+log "Checking SSH connectivity to '${VM_USER}@${VM_HOST}'"
+ssh "${SSH_OPTS[@]}" "${VM_HOST}" true \
+  || fail "Cannot reach '${VM_USER}@${VM_HOST}' via SSH. Ensure the VM is running and SSH key auth is configured."
 
 # ------------------------------------------------------------------------------
 # Fetch kubeconfig from VM
 # ------------------------------------------------------------------------------
 
 log "Fetching admin kubeconfig from ${VM_HOST}:${REMOTE_KUBECONFIG}"
-ssh "${VM_HOST}" "sudo cat ${REMOTE_KUBECONFIG}" > "${TMP_KUBECONFIG}" \
+ssh "${SSH_OPTS[@]}" "${VM_HOST}" "sudo cat ${REMOTE_KUBECONFIG}" > "${TMP_KUBECONFIG}" \
   || fail "Failed to read ${REMOTE_KUBECONFIG} from VM. Ensure k0s controller is running."
 
 chmod 600 "${TMP_KUBECONFIG}"

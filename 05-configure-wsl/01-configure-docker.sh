@@ -11,7 +11,9 @@ set -euo pipefail
 
 CONTEXT_NAME="kubernetes"
 VM_HOST="kubernetes"
-DOCKER_HOST="ssh://${VM_HOST}"
+VM_USER="${USER}"
+DOCKER_HOST="ssh://${VM_USER}@${VM_HOST}"
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -l "${VM_USER}")
 
 log()  { printf '\n[%s] [INFO]  %s\n' "$(date +%H:%M:%S)" "$*"; }
 fail() { printf '\n[%s] [ERROR] %s\n' "$(date +%H:%M:%S)" "$*" >&2; exit 1; }
@@ -52,9 +54,9 @@ fi
 # Pre-flight
 # ------------------------------------------------------------------------------
 
-log "Checking SSH connectivity to '${VM_HOST}'"
-ssh -o BatchMode=yes -o ConnectTimeout=10 "${VM_HOST}" true \
-  || fail "Cannot reach '${VM_HOST}' via SSH. Ensure the VM is running and SSH key auth is configured."
+log "Checking SSH connectivity to '${VM_USER}@${VM_HOST}'"
+ssh "${SSH_OPTS[@]}" "${VM_HOST}" true \
+  || fail "Cannot reach '${VM_USER}@${VM_HOST}' via SSH. Ensure the VM is running and SSH key auth is configured."
 
 # ------------------------------------------------------------------------------
 # Create context
