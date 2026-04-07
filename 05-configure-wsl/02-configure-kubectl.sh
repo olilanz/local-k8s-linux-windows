@@ -88,9 +88,12 @@ chmod 600 "${TMP_KUBECONFIG}"
 # ------------------------------------------------------------------------------
 
 log "Patching server URL to ${API_SERVER}"
-KUBECONFIG="${TMP_KUBECONFIG}" as_user kubectl config set-cluster "$(
-  KUBECONFIG="${TMP_KUBECONFIG}" as_user kubectl config get-clusters --no-headers | awk '{print $1}'
-)" --server="${API_SERVER}"
+CLUSTER_NAME="$(KUBECONFIG="${TMP_KUBECONFIG}" as_user kubectl config view \
+  --output=jsonpath='{.clusters[0].name}')"
+[[ -n "${CLUSTER_NAME}" ]] || fail "Could not determine cluster name from fetched kubeconfig"
+log "Cluster name: ${CLUSTER_NAME}"
+KUBECONFIG="${TMP_KUBECONFIG}" as_user kubectl config set-cluster "${CLUSTER_NAME}" \
+  --server="${API_SERVER}"
 
 # ------------------------------------------------------------------------------
 # Merge into local kubeconfig

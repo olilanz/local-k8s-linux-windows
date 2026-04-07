@@ -69,6 +69,42 @@ as_user ssh "${SSH_OPTS[@]}" "${VM_HOST}" true \
   || fail "Cannot reach '${VM_USER}@${VM_HOST}' via SSH. Ensure the VM is running and SSH key auth is configured."
 
 # ------------------------------------------------------------------------------
+# Ensure Docker Engine is installed on the VM
+# ------------------------------------------------------------------------------
+
+log "Checking for Docker Engine on the VM"
+if ! as_user ssh "${SSH_OPTS[@]}" "${VM_HOST}" "command -v docker >/dev/null 2>&1"; then
+  log "Docker not found on VM — installing Docker Engine"
+  as_user ssh "${SSH_OPTS[@]}" "${VM_HOST}" bash <<'REMOTE'
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y ca-certificates curl gnupg
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu \
+$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" \
+  | tee /etc/apt/sources.list.d/docker.list >/dev/null
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+systemctl enable --now docker
+usermod -aG docker "${SUDO_USER:-$(logname 2>/dev/null || echo ocl)}" || true
+REMOTE
+  log "Docker Engine installed on VM"
+else
+  log "Docker Engine already present on VM"
+fi
+
+# Ensure the SSH user on the VM is in the docker group
+log "Ensuring '${VM_USER}' is in the docker group on the VM"
+as_user ssh "${SSH_OPTS[@]}" "${VM_HOST}" \
+  "groups ${VM_USER} | grep -q docker || sudo usermod -aG docker ${VM_USER}" || true
+
+# ------------------------------------------------------------------------------
 # Create context
 # ------------------------------------------------------------------------------
 
