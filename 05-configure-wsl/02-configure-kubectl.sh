@@ -17,7 +17,16 @@ API_SERVER="https://${VM_HOST}:6443"
 REMOTE_KUBECONFIG="/var/lib/k0s/pki/admin.conf"
 LOCAL_KUBECONFIG="${HOME}/.kube/config"
 TMP_KUBECONFIG="$(mktemp)"
-SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -l "${VM_USER}")
+SSH_OPTS=(-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -l "${VM_USER}")
+
+# When invoked via sudo, run ssh as the original user so their ~/.ssh and agent are available.
+ssh_as_user() {
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    sudo -u "${VM_USER}" ssh "${SSH_OPTS[@]}" "$@"
+  else
+    ssh "${SSH_OPTS[@]}" "$@"
+  fi
+}
 
 log()  { printf '\n[%s] [INFO]  %s\n' "$(date +%H:%M:%S)" "$*"; }
 fail() { printf '\n[%s] [ERROR] %s\n' "$(date +%H:%M:%S)" "$*" >&2; rm -f "${TMP_KUBECONFIG}"; exit 1; }
@@ -58,7 +67,7 @@ fi
 # ------------------------------------------------------------------------------
 
 log "Checking SSH connectivity to '${VM_USER}@${VM_HOST}'"
-ssh "${SSH_OPTS[@]}" "${VM_HOST}" true \
+ssh_as_user "${VM_HOST}" true \
   || fail "Cannot reach '${VM_USER}@${VM_HOST}' via SSH. Ensure the VM is running and SSH key auth is configured."
 
 # ------------------------------------------------------------------------------
@@ -66,7 +75,7 @@ ssh "${SSH_OPTS[@]}" "${VM_HOST}" true \
 # ------------------------------------------------------------------------------
 
 log "Fetching admin kubeconfig from ${VM_HOST}:${REMOTE_KUBECONFIG}"
-ssh "${SSH_OPTS[@]}" "${VM_HOST}" "sudo cat ${REMOTE_KUBECONFIG}" > "${TMP_KUBECONFIG}" \
+ssh_as_user "${VM_HOST}" "sudo cat ${REMOTE_KUBECONFIG}" > "${TMP_KUBECONFIG}" \
   || fail "Failed to read ${REMOTE_KUBECONFIG} from VM. Ensure k0s controller is running."
 
 chmod 600 "${TMP_KUBECONFIG}"
