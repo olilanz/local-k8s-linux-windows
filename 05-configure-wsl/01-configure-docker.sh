@@ -11,7 +11,7 @@ set -euo pipefail
 
 CONTEXT_NAME="kubernetes"
 VM_HOST="kubernetes"
-VM_USER="${USER}"
+VM_USER="${SUDO_USER:-${USER}}"
 DOCKER_HOST="ssh://${VM_USER}@${VM_HOST}"
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -l "${VM_USER}")
 

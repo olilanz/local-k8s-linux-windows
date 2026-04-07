@@ -12,7 +12,7 @@ set -euo pipefail
 
 CONTEXT_NAME="kubernetes"
 VM_HOST="kubernetes"
-VM_USER="${USER}"
+VM_USER="${SUDO_USER:-${USER}}"
 API_SERVER="https://${VM_HOST}:6443"
 REMOTE_KUBECONFIG="/var/lib/k0s/pki/admin.conf"
 LOCAL_KUBECONFIG="${HOME}/.kube/config"
