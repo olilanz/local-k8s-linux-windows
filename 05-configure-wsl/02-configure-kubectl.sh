@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Purpose: Configure kubectl in WSL to talk to the Kubernetes API on the VM.
-# Preconditions: kubectl installed in WSL; VM reachable at hostname "kubernetes" via SSH
-#                with key-based (passwordless) auth; k0s control plane running on the VM.
+# Purpose: Install kubectl (if absent) and configure it in WSL to talk to the
+#          Kubernetes API on the VM.
+# Preconditions: Ubuntu-like WSL distro with apt; VM reachable at hostname "kubernetes"
+#                via SSH with key-based (passwordless) auth; k0s control plane running.
 # Invariants: Does not modify the cluster or its PKI.
 # Idempotency: Safe to rerun; kubeconfig context is overwritten on each run.
-# Postconditions: kubectl context "kubernetes" created, server patched to
+# Postconditions: kubectl installed, context "kubernetes" created, server patched to
 #                 https://kubernetes:6443, and set as the current context.
 
 CONTEXT_NAME="kubernetes"
@@ -23,11 +24,36 @@ cleanup() { rm -f "${TMP_KUBECONFIG}"; }
 trap cleanup EXIT
 
 # ------------------------------------------------------------------------------
-# Pre-flight
+# Install kubectl if absent
 # ------------------------------------------------------------------------------
 
-log "Checking kubectl"
-command -v kubectl >/dev/null 2>&1 || fail "kubectl not found in PATH"
+if ! command -v kubectl >/dev/null 2>&1; then
+  log "kubectl not found — installing via official Kubernetes apt repository"
+
+  command -v curl >/dev/null 2>&1 || sudo apt-get install -y curl
+
+  sudo apt-get update -y
+  sudo apt-get install -y apt-transport-https ca-certificates gnupg
+
+  sudo install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key \
+    | sudo gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  sudo chmod a+r /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+  echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
+https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /" \
+    | sudo tee /etc/apt/sources.list.d/kubernetes.list >/dev/null
+
+  sudo apt-get update -y
+  sudo apt-get install -y kubectl
+  log "kubectl installed: $(kubectl version --client --short 2>/dev/null || kubectl version --client)"
+else
+  log "kubectl already present: $(kubectl version --client --short 2>/dev/null || kubectl version --client)"
+fi
+
+# ------------------------------------------------------------------------------
+# Pre-flight
+# ------------------------------------------------------------------------------
 
 log "Checking SSH connectivity to '${VM_HOST}'"
 ssh -o BatchMode=yes -o ConnectTimeout=10 "${VM_HOST}" true \

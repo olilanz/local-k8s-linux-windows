@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Purpose: Configure a Docker context in WSL pointing to the Docker engine on the VM.
-# Preconditions: Docker CLI installed in WSL; VM reachable at hostname "kubernetes" via SSH
-#                with key-based (passwordless) auth; Docker daemon running on the VM.
+# Purpose: Install the Docker CLI (if absent) and configure a Docker context in WSL
+#          pointing to the Docker engine on the VM.
+# Preconditions: Ubuntu-like WSL distro with apt; VM reachable at hostname "kubernetes"
+#                via SSH with key-based (passwordless) auth; Docker daemon running on the VM.
 # Invariants: Does not modify Docker daemon configuration on the VM.
 # Idempotency: Safe to rerun; existing context is removed and recreated.
-# Postconditions: Docker context "kubernetes" created and set as the active context.
+# Postconditions: Docker CLI installed, context "kubernetes" created and set as active.
 
 CONTEXT_NAME="kubernetes"
 VM_HOST="kubernetes"
@@ -16,11 +17,40 @@ log()  { printf '\n[%s] [INFO]  %s\n' "$(date +%H:%M:%S)" "$*"; }
 fail() { printf '\n[%s] [ERROR] %s\n' "$(date +%H:%M:%S)" "$*" >&2; exit 1; }
 
 # ------------------------------------------------------------------------------
-# Pre-flight
+# Install Docker CLI if absent
 # ------------------------------------------------------------------------------
 
-log "Checking Docker CLI"
-command -v docker >/dev/null 2>&1 || fail "docker CLI not found in PATH"
+if ! command -v docker >/dev/null 2>&1; then
+  log "Docker CLI not found — installing via official Docker apt repository"
+
+  command -v curl >/dev/null 2>&1 || sudo apt-get install -y curl
+
+  # Add Docker's official GPG key and repository (idempotent)
+  sudo apt-get update -y
+  sudo apt-get install -y ca-certificates gnupg
+
+  sudo install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    | sudo gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+  sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu \
+$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" \
+    | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+
+  sudo apt-get update -y
+  # Install the CLI only — no daemon needed in WSL
+  sudo apt-get install -y docker-ce-cli docker-buildx-plugin docker-compose-plugin
+  log "Docker CLI installed: $(docker --version)"
+else
+  log "Docker CLI already present: $(docker --version)"
+fi
+
+# ------------------------------------------------------------------------------
+# Pre-flight
+# ------------------------------------------------------------------------------
 
 log "Checking SSH connectivity to '${VM_HOST}'"
 ssh -o BatchMode=yes -o ConnectTimeout=10 "${VM_HOST}" true \
