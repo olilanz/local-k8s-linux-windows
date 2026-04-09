@@ -233,6 +233,28 @@ helm version --short
 helm list -A
 ```
 
+### Configure VM Tooling (containerd-native)
+
+For tooling directly on the Linux VM (where k0s uses containerd), run:
+
+```bash
+./04-configure-vm/01-configure-crictl.sh
+./04-configure-vm/02-configure-nerdctl.sh
+./04-configure-vm/03-configure-kubectl.sh
+./04-configure-vm/04-configure-helm.sh
+./04-configure-vm/05-configure-argocd.sh
+```
+
+These scripts install and verify:
+
+- `crictl` for CRI/runtime inspection (`/etc/crictl.yaml` configured to containerd socket)
+- `nerdctl` for containerd image/container operations (`k8s.io` namespace defaults)
+- `kubectl` with artifact-first kubeconfig merge and context activation
+- `helm` for package management against current kube context
+- `argocd` CLI for Argo CD operations
+
+VM guidance is intentionally containerd-first; Docker CLI setup is not part of `04-configure-vm`.
+
 Windows worker onboarding is currently a scaffold and should be expanded before production use.
 
 ### Environment Hygiene During Iterative Testing
