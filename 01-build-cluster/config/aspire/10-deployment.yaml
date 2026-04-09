@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aspire-dashboard
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aspire-dashboard
+  template:
+    metadata:
+      labels:
+        app: aspire-dashboard
+    spec:
+      containers:
+        - name: aspire-dashboard
+          image: mcr.microsoft.com/dotnet/aspire-dashboard:8.2
+          ports:
+            - name: web
+              containerPort: 18888
+            - name: otlp
+              containerPort: 18889
+          env:
+            - name: ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS
+              value: "true"
+

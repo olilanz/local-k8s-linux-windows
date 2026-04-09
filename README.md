@@ -71,10 +71,12 @@ This section describes who the cluster is intended to serve and where developer 
 - **Windows host development surface**: developers may run Windows-native tooling such as VS Code or Visual Studio while targeting this cluster remotely.
 - **Shared operator expectation**: cluster access should be documented so `kubectl` can be used consistently from both Linux and Windows-oriented development surfaces.
 
-### Planned Surface: Argo CD
+### Platform Surfaces
 
-- A GitOps-oriented surface based on Argo CD is a planned future addition.
-- Argo CD workflow integration is **not implemented yet** in this repository.
+- **Argo CD** is installed as a raw-manifest stage and exposed at `argo.kubernetes`.
+- **OpenTelemetry Collector** is installed as a raw-manifest stage and exposed externally for OTLP/HTTP at `otel.kubernetes`.
+- **Aspire Dashboard** is installed as a raw-manifest stage and exposed at `aspire.kubernetes`.
+- **Local/private container registry** is installed as a raw-manifest stage and exposed at `cr.kubernetes`.
 
 ---
 
@@ -97,6 +99,11 @@ config/
 06-windows-node.ps1
 08-access-artifacts.sh
 10-nginx.sh
+11-ingress-nginx.sh
+12-registry.sh
+13-argocd.sh
+14-otel-collector.sh
+15-aspire-dashboard.sh
 20-validate.sh
 99-cleanup.sh
 ```
@@ -111,6 +118,11 @@ config/
 - [`06-windows-node.ps1`](06-windows-node.ps1): Windows worker stage scaffold that consumes the same shared token artifact path
 - [`08-access-artifacts.sh`](08-access-artifacts.sh): generate ephemeral remote-access artifacts under `./artifacts` (controller-IP kubeconfig, docker endpoint, and env hints) for WSL and future Windows configuration stages
 - [`10-nginx.sh`](10-nginx.sh): basic smoke deployment/connectivity check
+- [`11-ingress-nginx.sh`](11-ingress-nginx.sh): install ingress-nginx controller using raw upstream manifests (no Helm)
+- [`12-registry.sh`](12-registry.sh): deploy local/private registry and expose it at `cr.kubernetes`
+- [`13-argocd.sh`](13-argocd.sh): install Argo CD from upstream manifests and expose UI/API at `argo.kubernetes`
+- [`14-otel-collector.sh`](14-otel-collector.sh): deploy OpenTelemetry Collector and expose OTLP/HTTP ingest at `otel.kubernetes` (`/v1/traces`, `/v1/metrics`, `/v1/logs`)
+- [`15-aspire-dashboard.sh`](15-aspire-dashboard.sh): deploy Aspire Dashboard and sample telemetry generator, expose UI at `aspire.kubernetes`
 - [`20-validate.sh`](20-validate.sh): broad state diagnostics snapshot
 - [`99-cleanup.sh`](99-cleanup.sh): destructive cleanup/reset of local cluster state
 
@@ -132,8 +144,33 @@ sudo reboot
 # ./06-windows-node.ps1
 ./08-access-artifacts.sh
 ./10-nginx.sh
+./11-ingress-nginx.sh
+./12-registry.sh
+./13-argocd.sh
+./14-otel-collector.sh
+./15-aspire-dashboard.sh
 ./20-validate.sh
 ```
+
+### Domain Routing for Platform Surfaces
+
+Ingress hostnames are intentionally domain-based and mapped through ingress-nginx:
+
+- `cr.kubernetes` → local/private registry (`registry` namespace)
+- `argo.kubernetes` → Argo CD server (`argocd` namespace)
+- `otel.kubernetes` → OpenTelemetry Collector OTLP/HTTP ingest (`observability` namespace)
+- `aspire.kubernetes` → Aspire Dashboard UI (`observability` namespace)
+
+Add host entries on developer machines to route these names to the controller IP from artifacts (`./artifacts/controller-ip`), for example:
+
+```text
+192.168.250.10 cr.kubernetes argo.kubernetes otel.kubernetes aspire.kubernetes
+```
+
+OTLP exposure design:
+
+- OTLP/HTTP is externally reachable through `otel.kubernetes` paths `/v1/traces`, `/v1/metrics`, `/v1/logs`.
+- OTLP/gRPC remains internal-only via the cluster service (`otel-collector.observability.svc.cluster.local:4317`).
 
 By default, [`04-controller-token.sh`](04-controller-token.sh) performs local same-VM Linux worker join and passes `ALLOW_SAME_HOST_WORKER=true` into [`05-linux-node.sh`](05-linux-node.sh).
 
@@ -236,6 +273,7 @@ Cluster/runtime state under paths such as `/var/lib/k0s`, `/var/lib/kubelet`, `/
 ### Current Implementation Status
 
 - Linux control-plane and Linux worker path are implemented in shell scripts.
+- Core platform surfaces (ingress-nginx, registry, Argo CD, OpenTelemetry Collector, Aspire Dashboard) are implemented as raw Kubernetes-manifest stages.
 - Windows worker automation scaffold exists as [`06-windows-node.ps1`](06-windows-node.ps1) and currently validates shared token input only.
 
 ---

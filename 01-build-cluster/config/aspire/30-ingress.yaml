@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aspire-dashboard
+  namespace: observability
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: aspire.kubernetes
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aspire-dashboard
+                port:
+                  number: 18888
+

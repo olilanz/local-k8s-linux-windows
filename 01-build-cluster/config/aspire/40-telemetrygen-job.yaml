@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: otel-telemetrygen
+  namespace: observability
+  labels:
+    app: otel-telemetrygen
+spec:
+  ttlSecondsAfterFinished: 120
+  template:
+    metadata:
+      labels:
+        app: otel-telemetrygen
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: telemetrygen
+          image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.106.1
+          args:
+            - traces
+            - --otlp-http
+            - --otlp-endpoint=otel-collector.observability.svc.cluster.local:4318
+            - --duration=20s
+            - --rate=20
+

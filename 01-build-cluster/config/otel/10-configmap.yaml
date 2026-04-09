@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: observability
+data:
+  collector.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch: {}
+
+    exporters:
+      debug:
+        verbosity: detailed
+      otlphttp/aspire:
+        endpoint: http://aspire-dashboard.observability.svc.cluster.local:18889
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [debug, otlphttp/aspire]
+        metrics:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [debug, otlphttp/aspire]
+        logs:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [debug, otlphttp/aspire]
+

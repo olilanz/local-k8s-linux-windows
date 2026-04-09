@@ -30,4 +30,4 @@ log "Testing connectivity"
 k0s_kubectl run curl --rm -it --image=curlimages/curl --restart=Never -- \
   curl -s http://nginx | head -n 5
 
-summary "./20-validate.sh"
+summary "./11-ingress-nginx.sh"

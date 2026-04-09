@@ -53,6 +53,20 @@ run_check "Calico kube-controllers pods" k0s_kubectl -n kube-system get pods -l 
 run_check "Calico IP pools" k0s_kubectl get ippool
 run_check "Calico IPAM config" k0s_kubectl get ipamconfigs
 
+print_section "INGRESS + PLATFORM SURFACES"
+run_check "Ingress classes" k0s_kubectl get ingressclass
+run_check "ingress-nginx controller deployment" k0s_kubectl -n ingress-nginx get deployment ingress-nginx-controller -o wide
+run_check "Registry deployment" k0s_kubectl -n registry get deployment registry -o wide
+run_check "Registry ingress (cr.kubernetes)" k0s_kubectl -n registry get ingress registry -o wide
+run_check "Argo CD server deployment" k0s_kubectl -n argocd get deployment argocd-server -o wide
+run_check "Argo CD ingress (argo.kubernetes)" k0s_kubectl -n argocd get ingress argocd-server -o wide
+run_check "OpenTelemetry collector deployment" k0s_kubectl -n observability get deployment otel-collector -o wide
+run_check "OpenTelemetry collector service" k0s_kubectl -n observability get service otel-collector -o wide
+run_check "OpenTelemetry ingress (otel.kubernetes)" k0s_kubectl -n observability get ingress otel-collector -o wide
+run_check "Aspire dashboard deployment" k0s_kubectl -n observability get deployment aspire-dashboard -o wide
+run_check "Aspire dashboard ingress (aspire.kubernetes)" k0s_kubectl -n observability get ingress aspire-dashboard -o wide
+run_check "Recent telemetry generator jobs" k0s_kubectl -n observability get jobs -l app=otel-telemetrygen -o wide
+
 print_section "LINUX NODE CONNECTIVITY"
 run_check "Linux nodes (selector kubernetes.io/os=linux)" k0s_kubectl get nodes -l kubernetes.io/os=linux -o wide --show-labels
 run_check "Linux node details" k0s_kubectl get nodes -l kubernetes.io/os=linux -o yaml
