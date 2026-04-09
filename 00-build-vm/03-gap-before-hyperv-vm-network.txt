@@ -1,0 +1,30 @@
+﻿# Extracted from powershell-history.txt
+# Generated: 
+2026-04-09 16:29:31 +02:00
+
+# Section: 03 gap before Hyper-V VM/network
+
+wsl --update
+Enable-WindowsOptionalFeature -Online -FeatureName containers -All
+cd e:
+dir
+.\setup.exe /auto upgrade /dynamicupdate disable
+tasklist | findstr setup
+setup.exe /auto upgrade /dynamicupdate disable
+./setup.exe /auto upgrade /dynamicupdate disable
+docker
+cd ..
+cd .\repos\
+ls
+cd .\IMS-UP\
+ls
+cd .\src\
+ls
+cd .\UnifiedPlatform\
+ls
+docker compose -f .\Deployment\local-up-dev\docker-compose.yml up
+cd ..
+cd .\repos\
+ls
+cd .\IMS-UP\
+git pull

@@ -1,0 +1,112 @@
+﻿# Extracted from powershell-history.txt
+# Generated: 
+2026-04-09 16:29:31 +02:00
+
+# Section: 04 Hyper-V VM + network bridge/NAT
+
+Get-NetAdapter | Where-Object {$_.Status -eq "Up"}
+# --- variables ---
+$SwitchName = "k8s-dev-int"
+$SubnetCIDR = "192.168.250.0/24"
+$GatewayIP  = "192.168.250.1"
+$PrefixLen  = 24
+$NatName    = "k8s-dev-nat"
+# --- create internal vSwitch if missing ---
+if (-not (Get-VMSwitch -Name $SwitchName -ErrorAction SilentlyContinue)) {`
+    New-VMSwitch -Name $SwitchName -SwitchType Internal | Out-Null`
+}
+# Hyper-V creates a host-side adapter named like: vEthernet (k8s-dev-int)
+$IfAlias = "vEthernet ($SwitchName)"
+# Wait briefly in case adapter creation lags
+Start-Sleep -Seconds 2
+# --- assign host-side gateway IP if missing ---
+$existingIp = Get-NetIPAddress -InterfaceAlias $IfAlias -AddressFamily IPv4 -ErrorAction SilentlyContinue |`
+    Where-Object { $_.IPAddress -eq $GatewayIP }
+if (-not $existingIp) {`
+    # Remove old IPv4 addresses on that adapter if you want a clean setup`
+    Get-NetIPAddress -InterfaceAlias $IfAlias -AddressFamily IPv4 -ErrorAction SilentlyContinue |`
+        Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue`
+`
+    New-NetIPAddress -InterfaceAlias $IfAlias -IPAddress $GatewayIP -PrefixLength $PrefixLen | Out-Null`
+}
+# --- create NAT if missing ---
+if (-not (Get-NetNat -Name $NatName -ErrorAction SilentlyContinue)) {`
+    New-NetNat -Name $NatName -InternalIPInterfaceAddressPrefix $SubnetCIDR | Out-Null`
+}
+Write-Host "Done."
+Write-Host "Switch:   $SwitchName"
+Write-Host "Adapter:  $IfAlias"
+Write-Host "Gateway:  $GatewayIP/$PrefixLen"
+Write-Host "NAT:      $NatName"
+Get-VMSwitch -Name "k8s-dev-int"
+Get-NetIPAddress -InterfaceAlias "vEthernet (k8s-dev-int)" -AddressFamily IPv4
+Get-NetNat -Name "k8s-dev-nat"
+# --- variables ---
+$VmName      = "k8s-dev-cp-01"
+$VmPath      = "C:\VMs\$VmName"
+$VhdPath     = "$VmPath\$VmName.vhdx"
+$IsoPath     = "C:\ISOs\ubuntu-24.04.4-live-server-amd64.iso"
+$SwitchName  = "k8s-dev-int"
+$StartupRAM  = 8GB
+$MinRAM      = 4GB
+$MaxRAM      = 16GB
+$VhdSize     = 120GB
+$CpuCount    = 4
+# --- prechecks ---
+if (-not (Test-Path $IsoPath)) {`
+    throw "ISO not found: $IsoPath"`
+}
+if (-not (Get-VMSwitch -Name $SwitchName -ErrorAction SilentlyContinue)) {`
+    throw "vSwitch not found: $SwitchName"`
+}
+if (-not (Test-Path $VmPath)) {`
+    New-Item -ItemType Directory -Path $VmPath -Force | Out-Null`
+}
+# --- create VM if missing ---
+if (-not (Get-VM -Name $VmName -ErrorAction SilentlyContinue)) {`
+    New-VM ``
+        -Name $VmName ``
+        -Generation 2 ``
+        -MemoryStartupBytes $StartupRAM ``
+        -NewVHDPath $VhdPath ``
+        -NewVHDSizeBytes $VhdSize ``
+        -Path $VmPath ``
+        -SwitchName $SwitchName | Out-Null`
+}
+# --- CPU ---
+Set-VMProcessor -VMName $VmName -Count $CpuCount
+# --- memory ---
+Set-VMMemory ``
+    -VMName $VmName ``
+    -DynamicMemoryEnabled $true ``
+    -StartupBytes $StartupRAM ``
+    -MinimumBytes $MinRAM ``
+    -MaximumBytes $MaxRAM
+# --- attach ISO to DVD drive ---
+$dvd = Get-VMDvdDrive -VMName $VmName -ErrorAction SilentlyContinue
+if ($dvd) {`
+    Set-VMDvdDrive -VMName $VmName -Path $IsoPath`
+} else {`
+    Add-VMDvdDrive -VMName $VmName -Path $IsoPath | Out-Null`
+}
+# --- secure boot for Ubuntu ---
+Set-VMFirmware ``
+    -VMName $VmName ``
+    -EnableSecureBoot On ``
+    -SecureBootTemplate "MicrosoftUEFICertificateAuthority"
+# --- boot from DVD first for install ---
+$dvdDrive = Get-VMDvdDrive -VMName $VmName
+$hddDrive = Get-VMHardDiskDrive -VMName $VmName
+Set-VMFirmware ``
+    -VMName $VmName ``
+    -FirstBootDevice $dvdDrive
+# --- optional nic naming clarity ---
+Rename-VMNetworkAdapter -VMName $VmName -Name "Network Adapter" -NewName "k8s-int" -ErrorAction SilentlyContinue
+# --- summary ---
+Get-VM -Name $VmName | Select-Object Name, State, Generation
+Get-VMMemory -VMName $VmName | Select-Object DynamicMemoryEnabled, Startup, Minimum, Maximum
+Get-VMProcessor -VMName $VmName | Select-Object Count
+Get-VMDvdDrive -VMName $VmName | Select-Object Path
+Get-VMFirmware -VMName $VmName | Select-Object SecureBoot, SecureBootTemplate
+Start-VM -Name "k8s-dev-cp-01"
+vmconnect.exe localhost "k8s-dev-cp-01"

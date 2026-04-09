@@ -1,0 +1,155 @@
+﻿# Extracted from powershell-history.txt
+# Generated: 
+2026-04-09 16:29:31 +02:00
+
+# Section: 06 Windows containers + firewall + Windows kube
+
+Enable-WindowsOptionalFeature -Online -FeatureName containers -All
+Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All -All
+New-Item -ItemType Directory -Force -Path C:\containerd
+New-Item -ItemType Directory -Force -Path C:\containerd\bin
+$version = "1.7.30"
+$zip = "containerd-$version-windows-amd64.tar.gz"
+$url = "https://github.com/containerd/containerd/releases/download/v$version/$zip"
+Invoke-WebRequest $url -OutFile $zip
+tar -xvf $zip
+Copy-Item -Recurse -Force containerd\* C:\containerd\bin
+ls
+cd .\bin\
+ls
+cd ..
+ls
+Copy-Item -Recurse -Force .\bin\* C:\containerd\bin
+ls
+Remove-Item -Recurse -Force .\bin
+Remove-Item containerd-1.7.30-windows-amd64.tar.gz
+ls
+cd C:\containerd
+.\bin\containerd.exe config default | Out-File config.toml
+cd C:\containerd\bin
+.\containerd.exe --register-service
+Start-Service containerd
+Get-Service containerd
+New-Item -ItemType Directory -Force -Path C:\kubernetes
+cd ..
+cd .\kubernetes\
+$k8sVersion = "v1.35.2"
+$base = "https://dl.k8s.io/release/$k8sVersion/bin/windows/amd64"
+Invoke-WebRequest "$base/kubelet.exe" -OutFile "C:\kubernetes\kubelet.exe"
+Invoke-WebRequest "$base/kube-proxy.exe" -OutFile "C:\kubernetes\kube-proxy.exe"
+Get-ChildItem C:\kubernetes
+[Environment]::SetEnvironmentVariable(`
+  "Path",`
+  $env:Path + ";C:\kubernetes",`
+  [EnvironmentVariableTarget]::Machine`
+)
+New-Item -ItemType Directory -Force -Path C:\kubernetes\bin
+New-Item -ItemType Directory -Force -Path C:\kubernetes\config
+New-Item -ItemType Directory -Force -Path C:\kubernetes\pki
+New-Item -ItemType Directory -Force -Path C:\kubernetes\logs
+New-Item -ItemType Directory -Force -Path C:\kubernetes\cni\bin
+New-Item -ItemType Directory -Force -Path C:\kubernetes\cni\config
+ls
+Move-Item C:\kubernetes\kubelet.exe C:\kubernetes\bin\kubelet.exe -Force
+Move-Item C:\kubernetes\kube-proxy.exe C:\kubernetes\bin\kube-proxy.exe -Force
+notepad C:\kubernetes\config\kubelet-bootstrap.yaml
+Get-NetIPAddress -InterfaceAlias "vEthernet (k8s-dev-int)" | Where-Object {$_.AddressFamily -eq "IPv4"}
+notepad C:\kubernetes\start-kubelet.ps1
+notepad C:\kubernetes\config\kubelet-bootstrap.yaml
+notepad C:\kubernetes\start-kubelet.ps1
+cd C:\kubernetes
+.\start-kubelet.ps1
+notepad C:\kubernetes\start-kubelet.ps1
+.\start-kubelet.ps1
+notepad C:\kubernetes\start-kubelet.ps1
+notepad C:\kubernetes\config\kubelet-config.yaml
+notepad C:\kubernetes\config\kubelet-bootstrap.yaml
+notepad C:\kubernetes\start-kubelet.ps1
+cd C:\kubernetes
+.\start-kubelet.ps1
+notepad C:\kubernetes\start-kubelet.ps1
+.\start-kubelet.ps1
+New-NetFirewallRule ``
+  -DisplayName "K8s kubelet -> API server" ``
+  -Direction Outbound ``
+  -Action Allow ``
+  -Protocol TCP ``
+  -RemoteAddress 192.168.250.10 ``
+  -RemotePort 6443
+.\start-kubelet.ps1
+New-NetFirewallRule ``
+  -DisplayName "K8s kubelet inbound" ``
+  -Direction Inbound ``
+  -Action Allow ``
+  -Protocol TCP ``
+  -LocalPort 10250
+New-NetFirewallRule ``
+  -DisplayName "K8s internal network allow" ``
+  -Direction Inbound ``
+  -Action Allow ``
+  -InterfaceAlias "vEthernet (k8s-dev-int)" ``
+  -RemoteAddress 192.168.250.0/24
+New-NetFirewallRule ``
+  -DisplayName "Calico VXLAN" ``
+  -Direction Inbound ``
+  -Action Allow ``
+  -Protocol UDP ``
+  -LocalPort 4789
+Test-NetConnection 192.168.250.10 -Port 6443
+.\start-kubelet.ps1
+notepad C:\kubernetes\start-kubelet.ps1
+notepad C:\kubernetes\config\kubelet-config.yaml
+notepad C:\kubernetes\start-kubelet.ps1
+Test-NetConnection 192.168.250.10 -Port 6443
+Remove-Item -Recurse -Force C:\kubernetes\pki -ErrorAction SilentlyContinue
+Remove-Item C:\kubernetes\config\kubelet.yaml -ErrorAction SilentlyContinue
+# Base64 decode
+$bytes = [System.Convert]::FromBase64String($encoded)
+# Decompress (gzip)
+$ms = New-Object System.IO.MemoryStream(,$bytes)
+$gzip = New-Object System.IO.Compression.GzipStream($ms, [System.IO.Compression.CompressionMode]::Decompress)
+$out = New-Object System.IO.MemoryStream
+$gzip.CopyTo($out)
+# Convert to string
+$kubeconfig = [System.Text.Encoding]::UTF8.GetString($out.ToArray())
+# Save decoded kubeconfig
+$kubeconfig | Out-File C:\kubernetes\config\kubelet-bootstrap.yaml -Encoding ascii
+notepad C:\kubernetes\config\kubelet-bootstrap.yaml
+Remove-Item -Recurse -Force C:\kubernetes\pki -ErrorAction SilentlyContinue
+Remove-Item C:\kubernetes\config\kubelet.yaml -ErrorAction SilentlyContinue
+.\start-kubelet.ps1
+notepad C:\kubernetes\config\kubelet-bootstrap.yaml
+notepad C:\kubernetes\start-kubelet.ps1
+.\start-kubelet.ps1
+ping 1.1.1.1
+ping simcorp.com
+ping usa.gov
+ping www.worldanimalprotection.us
+ping www.viator.com
+wsl start
+net start WslInstaller
+net stop WslInstaller
+dotnet --version
+notepad C:\Windows\System32\drivers\etc
+ping kubernetes
+ls
+cd .\.ssh\
+ls
+ssh-keygen -t ed25519 -C ocl@simcorp.com
+ssh-copy-id ocl@kubernetes
+cd
+ssh ocl@kubernetes
+wsl --s
+wsl --shutdown
+wsl --start
+wsl start
+wsl /?
+wsl help
+wsl list
+wsl -l -v
+wsl --shutdown Ubuntu
+wsl -l - v
+wsl -l -v
+ping devserver.oliverlanz.int
+ssh ocl@kubernetes
+history

@@ -1,0 +1,111 @@
+﻿# Extracted from powershell-history.txt
+# Generated: 
+2026-04-09 16:29:31 +02:00
+
+# Section: 02 checkout IMS/UP sparse
+
+git pull https://simhub.simcorp.com/SimCorp/IMS.git
+git clone https://simhub.simcorp.com/SimCorp/IMS.git
+cd src
+ls
+cd .\a2-data-miner\
+ls
+cd .\DataMiner\
+ls
+dotnet --version
+ls
+cd
+ls -l
+cd .ssh
+ls
+cd .ssh
+pwd
+cd .\Apps\
+cd
+cd ~
+cd ,ssh
+cd .ssh
+ls
+cat .\config
+ ssh root@devserver.oliverlanz.int
+wsl --list
+wsl --update
+wsl status
+wsl --status
+wsl --version
+wsl --shutdown
+wsl --start
+wsl --shutdown
+wsl --run
+wsl --restart
+cd ..
+cd .\repos\
+ls
+cd .\IMS\
+git status
+git pull
+cd .\src\
+ls
+cd .\UnifiedPlatform\
+ls
+code .
+az login --tenant simcorp.com
+hostname
+cd ..
+cd .\repos\
+ls
+cd .\IMS\
+git pull
+cd ..
+ls
+git clone https://simhub.simcorp.com/SimCorp/IMS.git IMS-UP
+ls
+git clone --filter=blob:none --sparse https://simhub.simcorp.com/SimCorp/IMS.git IMS-UP
+cd IMS-UP && git sparse-checkout set src/UnifiedPlatform
+cd IMS-UP
+git sparse-checkout set src/UnifiedPlatform
+ls
+cd .\src\
+ls
+cd ..
+ls
+cd src
+ls
+cd ..
+git sparse-checkout init --no-cone
+git sparse-checkout set src/UnifiedPlatform
+git checkout .
+ls
+cd .\src\
+ls
+cd .\UnifiedPlatform\
+ls
+cat .\.github\
+cd .\.github\
+ls
+cat .\skills\
+ls
+ca 
+cat .\skills\
+wsl ls -la ~/.ssh/
+wsl cat ~/.ssh/id_ed25519 | Out-File -Encoding UTF8 "$env:USERPROFILE\.ssh\id_ed25519"
+wsl cat ~/.ssh/id_ed25519.pub | Out-File -Encoding UTF8 "$env:USERPROFILE\.ssh\id_ed25519.pub"
+wsl cat ~/.ssh/known_hosts | Out-File -Encoding UTF8 "$env:USERPROFILE\.ssh\known_hosts"
+dir "$env:USERPROFILE\.ssh\" | Select-Object Name
+ls "$env:USERPROFILE\.ssh\"
+icacls "$env:USERPROFILE\.ssh\id_ed25519" /inheritance:r /grant:r "$env:USERNAME`:F"
+ssh-add "$env:USERPROFILE\.ssh\id_ed25519"
+Start-Service ssh-agent
+git config --global core.sshCommand "ssh -i $env:USERPROFILE\.ssh\id_ed25519"
+git config --global --get core.sshCommand
+cd C:\repos\IMS; git remote -v
+cd C:\repos\IMS-UP; git remote -v
+cd C:\repos\IMS; git remote set-url origin ssh://git@simhub.simcorp.com/SimCorp/IMS.git
+cd C:\repos\IMS-UP; git remote set-url origin ssh://git@simhub.simcorp.com/SimCorp/IMS.git
+cd C:\repos\IMS; git remote -v
+cd C:\repos\IMS-UP; git remote -v
+
+# From Visual Studio Code Host history
+.\ssh-setup-keys.ps1 root@devserver.oliverlanz.int
+ssh root@devserver.oliverlanz.int
+ssh-add "$env:USERPROFILE\.ssh\id_ed25519"

@@ -1,0 +1,47 @@
+﻿# Extracted from powershell-history.txt
+# Generated: 
+2026-04-09 16:29:31 +02:00
+
+# Section: 01 gap before checkout
+
+powershell -v
+powershell --v
+powershell --version
+powershell /?
+powershell -Version
+exit
+wsl --update
+wsl --status
+wsl --list
+cd ..
+wsl --install
+wsl --install Ubuntu
+wsl --install
+wsl --install -d Ubuntu
+c:
+cd ..
+cd .\repos\
+cd .\memento-mc\
+git remote add origin https://github.com/olilanz/memento-mc.git
+git branch -M main
+git push -u origin main
+git status
+./gradlew build
+dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+wsl --update
+wsl --unregister docker-desktop
+cls
+wsl --unregister docker-desktop
+wsl --unregister docker-desktop-data
+wsl --set-default-version 2
+docker ps
+docker run ubuntu
+docker run -it ubuntu
+docker ps
+docker run -it ubuntu
+wsl --list
+wsl --search
+cd ..
+ cd ..
+cd .\repos\
+ls

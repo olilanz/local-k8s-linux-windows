@@ -1,0 +1,8 @@
+﻿# Extracted from powershell-history.txt
+# Generated: 
+2026-04-09 16:29:31 +02:00
+
+# Section: 05 gap before Windows kube
+
+docker version
+Start-VM -Name "k8s-dev-cp-01"
