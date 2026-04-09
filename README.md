@@ -155,7 +155,46 @@ For remote developer surfaces, run [`08-access-artifacts.sh`](08-access-artifact
 - `wsl.env`
 - `windows.env`
 
-The WSL scripts in [`05-configure-wsl/01-configure-docker.sh`](05-configure-wsl/01-configure-docker.sh) and [`05-configure-wsl/02-configure-kubectl.sh`](05-configure-wsl/02-configure-kubectl.sh) are artifact-driven and require these files instead of re-discovering cluster settings.
+The WSL scripts in [`05-configure-wsl/01-configure-docker.sh`](05-configure-wsl/01-configure-docker.sh) and [`05-configure-wsl/02-configure-kubectl.sh`](05-configure-wsl/02-configure-kubectl.sh) are artifact-driven and fetch these files from the VM over SSH on each run (no shared mount required).
+
+### Configure WSL Access (Docker + kubectl)
+
+Run from WSL after the cluster stages (including [`08-access-artifacts.sh`](08-access-artifacts.sh)) have been completed on the VM:
+
+```bash
+./05-configure-wsl/01-configure-docker.sh
+./05-configure-wsl/02-configure-kubectl.sh
+./05-configure-wsl/03-configure-helm.sh
+```
+
+Optional overrides (if VM user/host differs from defaults):
+
+```bash
+VM_HOST=kubernetes VM_USER=<vm-user> ./05-configure-wsl/01-configure-docker.sh
+VM_HOST=kubernetes VM_USER=<vm-user> ./05-configure-wsl/02-configure-kubectl.sh
+HELM_CONTEXT_NAME=kubernetes ./05-configure-wsl/03-configure-helm.sh
+```
+
+If access artifacts on the VM are readable only by root, provide VM sudo password for artifact fetch fallback:
+
+```bash
+VM_SUDO_PASSWORD='<vm-sudo-password>' ./05-configure-wsl/01-configure-docker.sh
+VM_SUDO_PASSWORD='<vm-sudo-password>' ./05-configure-wsl/02-configure-kubectl.sh
+```
+
+Validation from WSL:
+
+```bash
+docker context show
+docker info --format 'Server version: {{.ServerVersion}}'
+
+kubectl config current-context
+kubectl cluster-info
+kubectl get nodes -o wide
+
+helm version --short
+helm list -A
+```
 
 Windows worker onboarding is currently a scaffold and should be expanded before production use.
 
