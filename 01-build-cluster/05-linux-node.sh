@@ -88,4 +88,4 @@ else
   warn "Skipping cluster-side node verification; CONTROLLER_KUBECONFIG not found at ${CONTROLLER_KUBECONFIG}"
 fi
 
-summary "./10-nginx.sh"
+summary "./08-access-artifacts.sh"

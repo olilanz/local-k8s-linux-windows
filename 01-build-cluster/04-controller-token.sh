@@ -40,7 +40,7 @@ if [[ "${AUTO_JOIN_LOCAL_WORKER}" == "true" ]]; then
   ALLOW_SAME_HOST_WORKER="true" \
   CLEAN_WORKER_STATE="true" \
   bash "${SCRIPT_DIR}/05-linux-node.sh"
-  summary "./10-nginx.sh"
+  summary "./08-access-artifacts.sh"
   exit 0
 fi
 

@@ -95,6 +95,7 @@ config/
 04-controller-token.sh
 05-linux-node.sh
 06-windows-node.ps1
+08-access-artifacts.sh
 10-nginx.sh
 20-validate.sh
 99-cleanup.sh
@@ -108,6 +109,7 @@ config/
 - [`04-controller-token.sh`](04-controller-token.sh): generate shared worker join token artifact (`./artifacts/k0s-worker-token`) for Linux/Windows worker stages, then auto-join local Linux worker by default
 - [`05-linux-node.sh`](05-linux-node.sh): Linux worker join/install script (default token path `./artifacts/k0s-worker-token`); supports same-VM dual-service mode when explicitly allowed by caller
 - [`06-windows-node.ps1`](06-windows-node.ps1): Windows worker stage scaffold that consumes the same shared token artifact path
+- [`08-access-artifacts.sh`](08-access-artifacts.sh): generate ephemeral remote-access artifacts under `./artifacts` (controller-IP kubeconfig, docker endpoint, and env hints) for WSL and future Windows configuration stages
 - [`10-nginx.sh`](10-nginx.sh): basic smoke deployment/connectivity check
 - [`20-validate.sh`](20-validate.sh): broad state diagnostics snapshot
 - [`99-cleanup.sh`](99-cleanup.sh): destructive cleanup/reset of local cluster state
@@ -128,6 +130,7 @@ sudo reboot
 # ./05-linux-node.sh
 # optional/parallel worker path scaffold
 # ./06-windows-node.ps1
+./08-access-artifacts.sh
 ./10-nginx.sh
 ./20-validate.sh
 ```
@@ -143,6 +146,16 @@ AUTO_JOIN_LOCAL_WORKER=false ./04-controller-token.sh
 Then transfer `./artifacts/k0s-worker-token` and run [`05-linux-node.sh`](05-linux-node.sh) on the separate Linux worker host.
 
 For Windows worker onboarding, place the same token at the expected path and run [`06-windows-node.ps1`](06-windows-node.ps1).
+
+For remote developer surfaces, run [`08-access-artifacts.sh`](08-access-artifacts.sh) and consume the generated ephemeral files under `./artifacts`:
+
+- `kubeconfig-controller-ip.yaml`
+- `docker-host-uri`
+- `controller-ip`
+- `wsl.env`
+- `windows.env`
+
+The WSL scripts in [`05-configure-wsl/01-configure-docker.sh`](05-configure-wsl/01-configure-docker.sh) and [`05-configure-wsl/02-configure-kubectl.sh`](05-configure-wsl/02-configure-kubectl.sh) are artifact-driven and require these files instead of re-discovering cluster settings.
 
 Windows worker onboarding is currently a scaffold and should be expanded before production use.
 
